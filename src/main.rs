@@ -1,6 +1,6 @@
 use sola_raylib::prelude::*;
 
-mod systems;
+use rustahn::prelude::*;
 
 
 
@@ -9,9 +9,11 @@ pub fn main(){
     .size(800,600)
     .title("Rabahn")
     .build();
+    physics::update(rl.get_frame_time());
+    behaviour::update(rl.get_frame_time());
 
     while !rl.window_should_close(){
-        systems::physics::update(rl.get_frame_time());
+
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(sola_raylib::color::Color::LIGHTBLUE);
         d.draw_text("hello, world", 12, 12, 20, sola_raylib::color::Color::BLACK);
