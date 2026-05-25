@@ -1,7 +1,7 @@
 use sola_raylib::prelude::*;
 
-const GAME_WIDTH: i32 = 800;
-const GAME_HEIGHT: i32 = 600;
+const GAME_WIDTH: i32 = 1280;
+const GAME_HEIGHT: i32 = 720;
 
 pub fn main() {
     let (mut rl, thread) = sola_raylib::init()
