@@ -13,8 +13,22 @@ pub fn main() {
     let monitor = sola_raylib::core::window::get_current_monitor();
     let mon_w = sola_raylib::core::window::get_monitor_width(monitor);
     let mon_h = sola_raylib::core::window::get_monitor_height(monitor);
-    rl.set_window_size(mon_w, mon_h);
-    rl.set_window_position(0, 0);
+    #[cfg(not(target_os = "macos"))]{
+        rl.set_window_size(mon_w, mon_h);
+        rl.set_window_position(0, 0);
+    }
+    #[cfg(target_os = "macos")]{
+        rl.toggle_fullscreen();
+    }
+
+    // Read back what raylib actually sees after fullscreen/resize is applied
+    let screen_w = rl.get_screen_width() as f32;
+    let screen_h = rl.get_screen_height() as f32;
+
+    let game_w = GAME_WIDTH as f32;
+    let game_h = GAME_HEIGHT as f32;
+    let scale = (screen_w / game_w).min(screen_h / game_h);
+
 
     let mut target = rl
         .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)
@@ -37,8 +51,8 @@ pub fn main() {
 
 
         let dest_rec = Rectangle::new(
-            (mon_w as f32 - (game_w * scale)) * 0.5,
-            (mon_h as f32 - (game_h * scale)) * 0.5,
+            (screen_w as f32 - (game_w * scale)) * 0.5,
+            (screen_h as f32 - (game_h * scale)) * 0.5,
             game_w * scale,
             game_h * scale,
         );
