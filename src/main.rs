@@ -10,12 +10,13 @@ pub fn main() {
         .undecorated()
         .build();
 
-    let monitor = sola_raylib::core::window::get_current_monitor();
-    let mon_w = sola_raylib::core::window::get_monitor_width(monitor);
-    let mon_h = sola_raylib::core::window::get_monitor_height(monitor);
+
 
     #[cfg(not(target_os = "macos"))]
     {
+        let monitor = sola_raylib::core::window::get_current_monitor();
+        let mon_w = sola_raylib::core::window::get_monitor_width(monitor);
+        let mon_h = sola_raylib::core::window::get_monitor_height(monitor);
         rl.set_window_size(mon_w, mon_h);
         rl.set_window_position(0, 0);
     }
@@ -29,6 +30,14 @@ pub fn main() {
     let game_w = GAME_WIDTH as f32;
     let game_h = GAME_HEIGHT as f32;
     let scale = (screen_w / game_w).min(screen_h / game_h);
+
+    let source_rec = Rectangle::new(
+        0.0,
+        0.0,
+        GAME_WIDTH as f32,
+        -(GAME_HEIGHT as f32),
+    );
+    
     let dest_rec = Rectangle::new(
         (screen_w - (game_w * scale)) * 0.5,
         (screen_h - (game_h * scale)) * 0.5,
@@ -40,12 +49,6 @@ pub fn main() {
         .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)
         .expect("could not create target in main.rs");
 
-    let source_rec = Rectangle::new(
-        0.0,
-        0.0,
-        GAME_WIDTH as f32,
-        -(GAME_HEIGHT as f32),
-    );
 
     while !rl.window_should_close() {
         {
