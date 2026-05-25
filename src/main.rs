@@ -25,7 +25,7 @@ pub fn main() {
 
     let screen_w = rl.get_render_width() as f32;
     let screen_h = rl.get_render_height() as f32;
-
+    
     let game_w = GAME_WIDTH as f32;
     let game_h = GAME_HEIGHT as f32;
     let scale = (screen_w / game_w).min(screen_h / game_h);
