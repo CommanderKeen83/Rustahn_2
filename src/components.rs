@@ -32,7 +32,7 @@ pub enum SpriteID{
     Bullet,
     Fireball,
     Bomb,
-    Menu_Background,
+    MenuBackground,
     GameIntroBackground,
     GameIntroStormCloud,
     GameIntroWindowLamp
@@ -53,7 +53,7 @@ pub struct Entity{
 }
 
 impl Entity{
-    pub fn new(tag: EntityType, pos: Vector2, rot: f32, sprite_id: SpriteID) -> Entity {
+    pub fn new(tag: EntityType, pos: Vector2, sprite_id: SpriteID) -> Entity {
         Entity{
             tag,
             pos,
@@ -82,10 +82,10 @@ pub struct Mortality{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WeaponType{
-    Player_Bullet,
-    Enemy_Bullet,
-    Enemy_Fireball,
-    Enemy_FreezeBeam,
+    PlayerBullet,
+    EnemyBullet,
+    EnemyFireball,
+    EnemyFreezeBeam,
 
 }
 #[derive(Debug, Clone)]
