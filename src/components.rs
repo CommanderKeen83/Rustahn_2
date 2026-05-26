@@ -53,7 +53,7 @@ pub struct Entity{
 }
 
 impl Entity{
-    pub fn new(tag: EntityType, pos: Vector2, sprite_id: SpriteID) -> Entity {
+    pub fn new(tag: EntityType, pos: Vector2, sprite_id: SpriteID) -> Self {
         Entity{
             tag,
             pos,
