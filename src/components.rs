@@ -94,3 +94,18 @@ pub struct WeaponSet{
     pub timer: f32,
     pub weapon: WeaponType
 }
+
+pub mod fireball_stats{
+    pub const MAX_SPEED: f32 = 850.0;
+    pub const LIFETIME: f32 = 2.0;
+}
+
+pub mod player_stats{
+    pub const MAX_SPEED: f32 = 12550.0;
+    pub const ROTATION_SPEED: f32 = 200.0;
+    pub const THRUST_POWER: f32 = 800.0;
+}
+
+pub mod world_stats{
+    pub const DRAG: f32 = 3.0;
+}
