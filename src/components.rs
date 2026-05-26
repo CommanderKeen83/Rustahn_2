@@ -64,3 +64,33 @@ impl Entity{
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct MovementData{
+
+}
+
+#[derive(Debug, Clone)]
+pub struct AnimationData{
+
+}
+
+#[derive(Debug, Clone)]
+pub struct Mortality{
+
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WeaponType{
+    Player_Bullet,
+    Enemy_Bullet,
+    Enemy_Fireball,
+    Enemy_FreezeBeam,
+
+}
+#[derive(Debug, Clone)]
+pub struct WeaponSet{
+    pub cooldown: f32,
+    pub timer: f32,
+    pub weapon: WeaponType
+}
