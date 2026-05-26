@@ -22,3 +22,45 @@ impl EntityType{
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SpriteID{
+    Rabbit,
+    Gobbler,
+    EvilEye,
+    Fireworm,
+    Player,
+    Bullet,
+    Fireball,
+    Bomb,
+    Menu_Background,
+    GameIntroBackground,
+    GameIntroStormCloud,
+    GameIntroWindowLamp
+}
+
+#[derive(Debug, Clone)]
+pub struct Entity{
+    // Header - every entity has these properties
+    pub tag: EntityType,
+    pub pos: Vector2,
+    pub vel: Vector2,
+    pub rot: f32,
+    pub alive: bool,
+    pub sprite_id: SpriteID,
+
+    // optional components
+
+}
+
+impl Entity{
+    pub fn new(tag: EntityType, pos: Vector2, rot: f32, sprite_id: SpriteID) -> Entity {
+        Entity{
+            tag,
+            pos,
+            vel: Vector2::new(0.0, 0.0 ),
+            rot: 0.0,
+            alive: true,
+            sprite_id,
+        }
+    }
+}
