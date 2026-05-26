@@ -67,7 +67,18 @@ impl Entity{
 
 #[derive(Debug, Clone)]
 pub struct MovementData{
-
+    pub thrust_speed: f32,
+    pub max_speed: f32,
+    pub rotation_speed: f32,
+}
+impl MovementData{
+    pub fn new(thrust_speed: f32, max_speed: f32, rotation_speed: f32) -> Self{
+        MovementData{
+            thrust_speed,
+            max_speed,
+            rotation_speed,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
