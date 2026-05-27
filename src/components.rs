@@ -49,6 +49,11 @@ pub struct Entity{
     pub sprite_id: SpriteID,
 
     // optional components
+    pub movement_data: Option<MovementData>,
+    pub physics_data: Option<PhysicsData>,
+    pub weapon_set: Option<WeaponSet>,
+    pub mortality: Option<Mortality>,
+    pub animation_data: Option<AnimationData>,
 
 }
 
@@ -61,6 +66,11 @@ impl Entity{
             rot: 0.0,
             alive: true,
             sprite_id,
+            movement_data: None,
+            physics_data: None,
+            weapon_set: None,
+            mortality: None,
+            animation_data: None,
         }
     }
 }
@@ -80,15 +90,33 @@ impl MovementData{
         }
     }
 }
-
 #[derive(Debug, Clone)]
-pub struct AnimationData{
-
+pub struct AnimationData {
+    pub timer: f32,
+    pub frame_duration: f32,
+    pub current_frame: usize,
+    pub framecount_per_row: usize,
+    pub rows: usize,
+    pub active_only_on_move: bool,
 }
+
+impl Default for AnimationData {
+    fn default() -> Self {
+        Self {
+            timer: 0.0,
+            frame_duration: 0.0,
+            current_frame: 0,
+            framecount_per_row: 8,
+            rows: 0,
+            active_only_on_move: false,
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Mortality{
-
+    pub lifetime: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +132,11 @@ pub struct WeaponSet{
     pub cooldown: f32,
     pub timer: f32,
     pub weapon: WeaponType
+}
+
+#[derive(Debug, Clone)]
+pub struct PhysicsData{
+
 }
 
 pub mod fireball_stats{
