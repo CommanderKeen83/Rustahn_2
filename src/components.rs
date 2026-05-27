@@ -1,79 +1,3 @@
-use sola_raylib::prelude::*;
-
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EntityType{
-    Rabbit,
-    Gobbler,
-    EvilEye,
-    Fireworm,
-    Player,
-    Bullet,
-    Fireball,
-    Bomb
-}
-
-impl EntityType{
-    pub fn is_enemy(&self) -> bool{
-        matches!(self, EntityType::Gobbler | EntityType::EvilEye | EntityType::Fireworm)
-    }
-    pub fn is_weapon(&self) -> bool{
-        matches!(self, EntityType::Bullet | EntityType::Fireball | EntityType::Bomb)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SpriteID{
-    Rabbit,
-    Gobbler,
-    EvilEye,
-    Fireworm,
-    Player,
-    Bullet,
-    Fireball,
-    Bomb,
-    MenuBackground,
-    GameIntroBackground,
-    GameIntroStormCloud,
-    GameIntroWindowLamp
-}
-
-#[derive(Debug, Clone)]
-pub struct Entity{
-    // Header - every entity has these properties
-    pub tag: EntityType,
-    pub pos: Vector2,
-    pub vel: Vector2,
-    pub rot: f32,
-    pub alive: bool,
-    pub sprite_id: SpriteID,
-
-    // optional components
-    pub movement_data: Option<MovementData>,
-    pub physics_data: Option<PhysicsData>,
-    pub weapon_set: Option<WeaponSet>,
-    pub mortality: Option<Mortality>,
-    pub animation_data: Option<AnimationData>,
-
-}
-
-impl Entity{
-    pub fn new(tag: EntityType, pos: Vector2, sprite_id: SpriteID) -> Self {
-        Entity{
-            tag,
-            pos,
-            vel: Vector2::new(0.0, 0.0 ),
-            rot: 0.0,
-            alive: true,
-            sprite_id,
-            movement_data: None,
-            physics_data: None,
-            weapon_set: None,
-            mortality: None,
-            animation_data: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct MovementData{
@@ -112,7 +36,16 @@ impl Default for AnimationData {
         }
     }
 }
+#[derive(Debug, Clone)]
+pub struct KnockbackData {
+    pub impulse: f32,
+}
 
+impl Default for KnockbackData {
+    fn default() -> Self {
+        Self { impulse: 1.0 }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Mortality{
