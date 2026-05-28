@@ -34,4 +34,20 @@ impl World {
             physics_data: Vec::new(),
         }
     }
+    pub fn spawn(&mut self) -> Entitybuilder{
+        let id = self.next_entity_id;
+        self.next_entity_id += 1;
+
+        Entitybuilder{ world: self, id }
+    }
+}
+pub struct Entitybuilder<'a>{
+    world:&'a mut World,
+    id: usize,
+}
+impl<'a> Entitybuilder<'a> {
+    pub fn with_physics(self, physics_data: PhysicsData ) -> Self {
+        self.world.physics_data[self.id] = Some(physics_data);
+        self
+    }
 }
