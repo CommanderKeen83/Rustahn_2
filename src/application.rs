@@ -13,11 +13,18 @@ impl Application{
             gamestate: Gamestate::new(),
         }
     }
+    pub fn update(&mut self, delta_time: f32){
+
+    }
+    pub fn draw(&mut self){
+            self.window.draw();
+
+    }
     // main game loop
     pub fn run(&mut self){
         while !self.window.should_close() {
-
-            self.window.draw();
+            self.update(self.window.get_delta_time());
+            self.draw();
         }
     }
 }
