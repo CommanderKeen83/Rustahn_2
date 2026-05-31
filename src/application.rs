@@ -1,9 +1,11 @@
 use crate::window::*;
 use crate::gamestate::*;
+use crate::statemanager::*;
 
 pub struct Application{
     window: Window,
     gamestate: Gamestate,
+    statemanager: StateManager,
 }
 
 impl Application{
@@ -11,6 +13,7 @@ impl Application{
         Self{
             window: Window::init(),
             gamestate: Gamestate::new(),
+            statemanager: StateManager::new(),
         }
     }
     pub fn update(&mut self, _delta_time: f32){
@@ -18,7 +21,7 @@ impl Application{
     }
     pub fn draw(&mut self){
             self.window.draw(|canvas|{
-                self.gamestate.draw(canvas);
+                self.statemanager.draw(canvas);
             });
 
     }

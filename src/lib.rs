@@ -7,3 +7,4 @@ pub mod ecs;
 pub mod window;
 pub mod application;
 pub mod screens;
+pub mod statemanager;
