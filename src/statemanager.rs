@@ -1,5 +1,13 @@
 use sola_raylib::prelude::*;
+use crate::prelude::*;
 
+
+pub enum State{
+    Menu(MenuScreen),
+    GameIntro(GameIntroScreen),
+    Game(GameScreen),
+    Pause(PauseScreen),
+}
 pub struct StateManager{
 
 }
