@@ -13,13 +13,13 @@ impl Application{
             gamestate: Gamestate::new(),
         }
     }
-    pub fn update(&mut self, delta_time: f32){
+    pub fn update(&mut self, _delta_time: f32){
 
     }
     pub fn draw(&mut self){
-        self.window.draw(|canvas| {
-            self.gamestate.draw(canvas);
-        });
+            self.window.draw(|canvas|{
+                self.gamestate.draw(canvas);
+            });
 
     }
     // main game loop

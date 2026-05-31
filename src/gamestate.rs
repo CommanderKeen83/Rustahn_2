@@ -13,7 +13,7 @@ impl Gamestate {
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
+    pub fn update(&mut self, _dt: f32) {
 
     }
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>) {
