@@ -17,7 +17,9 @@ impl Application{
 
     }
     pub fn draw(&mut self){
-            self.window.draw();
+        self.window.draw(|canvas| {
+            self.gamestate.draw(canvas);
+        });
 
     }
     // main game loop

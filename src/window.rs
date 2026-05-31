@@ -69,13 +69,14 @@ let (mut rl, thread) = sola_raylib::init()
     pub fn get_delta_time(&self) -> f32{
         self.rl.get_frame_time()
     }
-    
-    pub fn draw(&mut self){
+
+    pub fn draw(&mut self, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {
         while !self.rl.window_should_close() {
         {
             let mut d_texture = self.rl.begin_texture_mode(&self.thread, &mut self.target);
             d_texture.clear_background(Color::LIGHTBLUE);
             d_texture.draw_text("hello, world", 12, 12, 20, Color::BLACK);
+            draw_fn(&mut d_texture);
         }
 
         let mut d = self.rl.begin_drawing(&self.thread);
