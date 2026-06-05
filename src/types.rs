@@ -1,13 +1,4 @@
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum StateType{
-    Menu,
-    GameIntro,
-    Game,
-    Options,
-    Pause,
-    GameOver,
-}
 pub struct EntityID(pub usize);
 
 

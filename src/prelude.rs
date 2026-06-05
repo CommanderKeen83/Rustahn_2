@@ -11,3 +11,5 @@ pub use crate::screens::gameintroscreen::*;
 pub use crate::screens::gamescreen::*;
 pub use crate::screens::menuscreen::*;
 pub use crate::screens::pausescreen::*;
+pub use crate::screens::optionscreen::*;
+pub use crate::statemanager::*;

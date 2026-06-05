@@ -5,8 +5,45 @@ use crate::prelude::*;
 pub enum State{
     Menu(MenuScreen),
     GameIntro(GameIntroScreen),
-    Game(GameScreen),
+    Game(Box<GameScreen>), // because it could be massive
     Pause(PauseScreen),
+    Options(OptionsScreen),
+}
+
+impl State{
+    // builder functions
+    pub fn menu() -> Self{ Self::Menu(MenuScreen{} )}
+    pub fn gameintro() -> Self{ Self::GameIntro(GameIntroScreen{} )}
+    pub fn game() -> Self{ Self::Game(Box::new(GameScreen{} ))}
+    pub fn pause() -> Self{ Self::Pause(PauseScreen{} )}
+
+    // all screens must implement these functions
+    pub fn on_enter(&mut self){
+        match(self){
+            State::Menu(screen) => screen.on_enter(),
+            State::GameIntro(screen) => screen.on_enter(),
+            State::Game(screen) => screen.on_enter(),
+            State::Pause(screen) => screen.on_enter(),
+            State::Options(screen) => screen.on_enter()
+        }
+    }
+    pub fn on_activate(&mut self){}
+    pub fn on_deactivate(&mut self){}
+    pub fn on_exit(&mut self){}
+
+    pub fn update(&mut self, dt: f32){}
+    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>){}
+
+
+}
+
+pub enum Transition{
+    None, 
+    Push(State), // Push a State on Top of the Stack
+    Switch(State), // Reuse existing or push fresh
+    Pop, // remove state on Top of The Stack
+    Swap(State), // pop current, push new
+    ClearAndPush(State), // pop all, push new
 }
 pub struct StateManager{
 
