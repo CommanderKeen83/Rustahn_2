@@ -109,7 +109,7 @@ impl State{
 pub enum Transition{
     None, 
     Push(State), // Push a State on Top of the Stack
-    Switch(State), // Reuse existing or push fresh
+    Switch(StateTag), // Reuse existing or push fresh
     Pop, // remove state on Top of The Stack
     Swap(State), // pop current, push new
     ClearAndPush(State), // pop all, push new
@@ -184,23 +184,22 @@ impl StateManager{
         self.stack.push(state);
     }
 
-    pub fn switch(&mut self, state: State) {
-        let position = self.stack.iter().position(|s| s.tag() == state.tag());
+    pub fn switch(&mut self, tag: StateTag) {
+        let position = self.stack.iter().position(|s| s.tag() == tag);
         if let Some(pos) = position {
-            while self.stack.len() > pos + 1 {
-                if let Some(mut top) = self.stack.pop() {
+            if pos < self.stack.len() - 1 {
+                if let Some(top) = self.stack.last_mut() {
                     top.on_deactivate();
-                    top.on_exit();
                 }
-            }
-            if let Some(top) = self.stack.last_mut() {
-                top.on_activate();
+                let mut existing_state = self.stack.remove(pos);
+                existing_state.on_activate();
+                self.stack.push(existing_state);
             }
         } else {
             if let Some(top) = self.stack.last_mut() {
                 top.on_deactivate();
             }
-            let mut state = state;
+            let mut state = State::fromTag(tag);
             state.on_enter();
             state.on_activate();
             self.stack.push(state);
@@ -213,7 +212,7 @@ impl StateManager{
             match transition {
                 Transition::None => {}
                 Transition::Push(state) => self.push(state),
-                Transition::Switch(state) => self.switch(state),
+                Transition::Switch(tag) => self.switch(tag),
                 Transition::Pop => self.pop(),
                 Transition::Swap(state) => self.swap(state),
                 Transition::ClearAndPush(state) => self.clear_and_push(state),
@@ -229,9 +228,62 @@ impl StateManager{
     }
 }
 
-/*
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn test_switch_new_state() {
+        let mut manager = StateManager::new(StateTag::Menu);
+        assert_eq!(manager.stack.len(), 1);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
 
+        // Switch to a new state: Game
+        manager.switch(StateTag::Game);
+        assert_eq!(manager.stack.len(), 2);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+    }
 
-*/
+    #[test]
+    fn test_switch_existing_state_middle() {
+        let mut manager = StateManager::new(StateTag::Menu);
+        manager.switch(StateTag::Game);
+        manager.switch(StateTag::Pause);
+        
+        // Stack should be [Menu, Game, Pause]
+        assert_eq!(manager.stack.len(), 3);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+        assert_eq!(manager.stack[2].tag(), StateTag::Pause);
+
+        // Switch to Game (which already exists at index 1)
+        manager.switch(StateTag::Game);
+        
+        // Stack should now be [Menu, Pause, Game]
+        assert_eq!(manager.stack.len(), 3);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].tag(), StateTag::Pause);
+        assert_eq!(manager.stack[2].tag(), StateTag::Game);
+    }
+
+    #[test]
+    fn test_switch_existing_state_top() {
+        let mut manager = StateManager::new(StateTag::Menu);
+        manager.switch(StateTag::Game);
+        
+        // Stack should be [Menu, Game]
+        assert_eq!(manager.stack.len(), 2);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+
+        // Switch to Game (which is already top)
+        manager.switch(StateTag::Game);
+        
+        // Stack should remain [Menu, Game]
+        assert_eq!(manager.stack.len(), 2);
+        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+    }
+}
