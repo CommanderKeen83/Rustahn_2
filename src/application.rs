@@ -13,7 +13,7 @@ impl Application{
         Self{
             window: Window::init(),
             gamestate: Gamestate::new(),
-            statemanager: StateManager::new(),
+            statemanager: StateManager::new(StateTag::Menu),
         }
     }
     pub fn update(&mut self, _delta_time: f32){
