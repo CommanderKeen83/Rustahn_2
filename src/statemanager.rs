@@ -3,19 +3,19 @@ use crate::prelude::*;
 
 
 pub enum State{
-    Menu(Menu),
-    GameIntro(GameIntro),
-    Game(Box<Game>), // because it could be massive
-    Pause(Pause),
-    Options(Options),
+    Menu(screens::Menu),
+    GameIntro(screens::GameIntro),
+    Game(Box<screens::Game>), // because it could be massive
+    Pause(screens::Pause),
+    Options(screens::Options),
 }
 
 impl State{
     // builder functions
-    pub fn menu() -> Self{ Self::Menu(Menu{} )}
-    pub fn gameintro() -> Self{ Self::GameIntro(GameIntro{} )}
-    pub fn game() -> Self{ Self::Game(Box::new(Game{} ))}
-    pub fn pause() -> Self{ Self::Pause(Pause{} )}
+    pub fn menu() -> Self{ Self::Menu(screens::Menu{} )}
+    pub fn gameintro() -> Self{ Self::GameIntro(screens::GameIntro{} )}
+    pub fn game() -> Self{ Self::Game(Box::new(screens::Game{} ))}
+    pub fn pause() -> Self{ Self::Pause(screens::Pause{} )}
 
     // all screens must implement these functions
     pub fn on_enter(&mut self){
