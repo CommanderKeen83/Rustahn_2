@@ -16,8 +16,9 @@ impl Application{
             statemanager: StateManager::new(StateTag::Menu),
         }
     }
-    pub fn update(&mut self, _delta_time: f32){
-
+    pub fn update(&mut self, delta_time: f32){
+        self.statemanager.update(delta_time);
+        self.statemanager.late_update();
     }
     pub fn draw(&mut self){
             self.window.draw(|canvas|{
