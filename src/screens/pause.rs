@@ -1,6 +1,6 @@
 use sola_raylib::prelude::*;
-pub struct OptionsScreen{}
-impl OptionsScreen{
+pub struct Pause{}
+impl Pause{
     pub fn on_enter(&mut self){}
     pub fn on_activate(&mut self){}
     pub fn on_deactivate(&mut self){}

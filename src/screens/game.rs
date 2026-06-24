@@ -1,6 +1,6 @@
 use sola_raylib::prelude::*;
-pub struct GameIntroScreen{}
-impl GameIntroScreen{
+pub struct Game{}
+impl Game{
     pub fn on_enter(&mut self){}
     pub fn on_activate(&mut self){}
     pub fn on_deactivate(&mut self){}
@@ -8,6 +8,5 @@ impl GameIntroScreen{
 
     pub fn update(&mut self, dt: f32){}
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>){}
-
 
 }

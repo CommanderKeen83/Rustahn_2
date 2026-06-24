@@ -1,6 +1,6 @@
 use sola_raylib::prelude::*;
-pub struct GameScreen{}
-impl GameScreen{
+pub struct Options{}
+impl Options{
     pub fn on_enter(&mut self){}
     pub fn on_activate(&mut self){}
     pub fn on_deactivate(&mut self){}

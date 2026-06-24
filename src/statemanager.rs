@@ -3,23 +3,23 @@ use crate::prelude::*;
 
 
 pub enum State{
-    Menu(MenuScreen),
-    GameIntro(GameIntroScreen),
-    Game(Box<GameScreen>), // because it could be massive
-    Pause(PauseScreen),
-    Options(OptionsScreen),
+    Menu(Menu),
+    GameIntro(GameIntro),
+    Game(Box<Game>), // because it could be massive
+    Pause(Pause),
+    Options(Options),
 }
 
 impl State{
     // builder functions
-    pub fn menu() -> Self{ Self::Menu(MenuScreen{} )}
-    pub fn gameintro() -> Self{ Self::GameIntro(GameIntroScreen{} )}
-    pub fn game() -> Self{ Self::Game(Box::new(GameScreen{} ))}
-    pub fn pause() -> Self{ Self::Pause(PauseScreen{} )}
+    pub fn menu() -> Self{ Self::Menu(Menu{} )}
+    pub fn gameintro() -> Self{ Self::GameIntro(GameIntro{} )}
+    pub fn game() -> Self{ Self::Game(Box::new(Game{} ))}
+    pub fn pause() -> Self{ Self::Pause(Pause{} )}
 
     // all screens must implement these functions
     pub fn on_enter(&mut self){
-        match(self){
+        match self{
             State::Menu(screen) => screen.on_enter(),
             State::GameIntro(screen) => screen.on_enter(),
             State::Game(screen) => screen.on_enter(),
@@ -64,3 +64,10 @@ impl StateManager{
         );
     }
 }
+
+/*
+
+
+
+
+*/

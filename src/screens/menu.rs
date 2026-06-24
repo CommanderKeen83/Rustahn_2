@@ -1,6 +1,6 @@
 use sola_raylib::prelude::*;
-pub struct MenuScreen{}
-impl MenuScreen{
+pub struct Menu{}
+impl Menu{
     pub fn on_enter(&mut self){}
     pub fn on_activate(&mut self){}
     pub fn on_deactivate(&mut self){}
