@@ -103,6 +103,16 @@ impl State{
         }
     }
 
+    pub fn is_transparent(&self) -> bool {
+        match self {
+            State::Menu(screen) => screen.is_transparent(),
+            State::GameIntro(screen) => screen.is_transparent(),
+            State::Game(screen) => screen.is_transparent(),
+            State::Pause(screen) => screen.is_transparent(),
+            State::Options(screen) => screen.is_transparent(),
+        }
+    }
+
 
 }
 
@@ -222,8 +232,20 @@ impl StateManager{
 
 
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>) {
-        for state in &self.stack{
-            state.draw(canvas);
+        if self.stack.is_empty() {
+            return;
+        }
+
+        let mut start_idx = self.stack.len() - 1;
+        while start_idx > 0 {
+            if !self.stack[start_idx].is_transparent() {
+                break;
+            }
+            start_idx -= 1;
+        }
+
+        for i in start_idx..self.stack.len() {
+            self.stack[i].draw(canvas);
         }
     }
 }
@@ -280,10 +302,25 @@ mod tests {
 
         // Switch to Game (which is already top)
         manager.switch(StateTag::Game);
-        
+
         // Stack should remain [Menu, Game]
         assert_eq!(manager.stack.len(), 2);
         assert_eq!(manager.stack[0].tag(), StateTag::Menu);
         assert_eq!(manager.stack[1].tag(), StateTag::Game);
+    }
+
+    #[test]
+    fn test_screen_transparency() {
+        let menu = State::fromTag(StateTag::Menu);
+        let game_intro = State::fromTag(StateTag::GameIntro);
+        let game = State::fromTag(StateTag::Game);
+        let pause = State::fromTag(StateTag::Pause);
+        let options = State::fromTag(StateTag::Options);
+
+        assert!(!menu.is_transparent());
+        assert!(!game_intro.is_transparent());
+        assert!(!game.is_transparent());
+        assert!(pause.is_transparent());
+        assert!(options.is_transparent());
     }
 }

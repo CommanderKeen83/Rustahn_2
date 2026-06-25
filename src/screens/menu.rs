@@ -18,4 +18,8 @@ impl Menu{
         );
     }
 
+    pub fn is_transparent(&self) -> bool {
+        false
+    }
+
 }

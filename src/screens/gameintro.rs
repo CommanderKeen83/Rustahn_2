@@ -9,5 +9,9 @@ impl GameIntro{
     pub fn update(&mut self, dt: f32){}
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>){}
 
+    pub fn is_transparent(&self) -> bool {
+        false
+    }
+
 
 }
