@@ -8,3 +8,4 @@ pub mod window;
 pub mod application;
 pub mod screens;
 pub mod statemanager;
+pub mod resources; 

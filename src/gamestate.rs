@@ -1,10 +1,9 @@
-
-use sola_raylib::prelude::*;
 use crate::ecs;
+use sola_raylib::prelude::*;
 
-pub struct Gamestate{
+pub struct Gamestate {
+    #[allow(dead_code)]
     world: ecs::World,
-
 }
 impl Gamestate {
     pub fn new() -> Self {
@@ -13,16 +12,8 @@ impl Gamestate {
         }
     }
 
-    pub fn update(&mut self, _dt: f32) {
-
-    }
-    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>) {
+    pub fn update(&mut self, _dt: f32) {}
+    pub fn draw(&self, _canvas: &mut RaylibTextureMode<RaylibHandle>) {
         // test: just draw a red triangle to prove the pipeline works
-        canvas.draw_triangle(
-            Vector2::new(640.0, 200.0),
-            Vector2::new(400.0, 500.0),
-            Vector2::new(880.0, 500.0),
-            Color::RED,
-        );
     }
 }

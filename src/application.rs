@@ -2,6 +2,7 @@ use crate::window::*;
 use crate::gamestate::*;
 use crate::statemanager::*;
 
+#[allow(dead_code)]
 pub struct Application{
     window: Window,
     gamestate: Gamestate,

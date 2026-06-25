@@ -64,7 +64,7 @@ impl State{
         }
     }
 
-    pub fn fromTag(tag: StateTag)->Self{
+    pub fn from_tag(tag: StateTag)->Self{
         match tag{
             StateTag::Menu => Self::menu(),
             StateTag::GameIntro => Self::gameintro(),
@@ -140,7 +140,7 @@ pub struct StateManager{
 }
 impl StateManager{
     pub fn new(tag: StateTag) -> Self {
-        let mut state = State::fromTag(tag);
+        let mut state = State::from_tag(tag);
         state.on_enter();
         state.on_activate();
         Self{
@@ -231,7 +231,7 @@ impl StateManager{
             if let Some(top) = self.stack.last_mut() {
                 top.on_deactivate();
             }
-            let mut state = State::fromTag(tag);
+            let mut state = State::from_tag(tag);
             state.on_enter();
             state.on_activate();
             self.stack.push(state);
@@ -333,11 +333,11 @@ mod tests {
 
     #[test]
     fn test_screen_transparency() {
-        let menu = State::fromTag(StateTag::Menu);
-        let game_intro = State::fromTag(StateTag::GameIntro);
-        let game = State::fromTag(StateTag::Game);
-        let pause = State::fromTag(StateTag::Pause);
-        let options = State::fromTag(StateTag::Options);
+        let menu = State::from_tag(StateTag::Menu);
+        let game_intro = State::from_tag(StateTag::GameIntro);
+        let game = State::from_tag(StateTag::Game);
+        let pause = State::from_tag(StateTag::Pause);
+        let options = State::from_tag(StateTag::Options);
 
         assert!(!menu.is_transparent());
         assert!(!game_intro.is_transparent());
@@ -348,11 +348,11 @@ mod tests {
 
     #[test]
     fn test_screen_transcendence() {
-        let menu = State::fromTag(StateTag::Menu);
-        let game_intro = State::fromTag(StateTag::GameIntro);
-        let game = State::fromTag(StateTag::Game);
-        let pause = State::fromTag(StateTag::Pause);
-        let options = State::fromTag(StateTag::Options);
+        let menu = State::from_tag(StateTag::Menu);
+        let game_intro = State::from_tag(StateTag::GameIntro);
+        let game = State::from_tag(StateTag::Game);
+        let pause = State::from_tag(StateTag::Pause);
+        let options = State::from_tag(StateTag::Options);
 
         assert!(!menu.is_transcendent());
         assert!(!game_intro.is_transcendent());
