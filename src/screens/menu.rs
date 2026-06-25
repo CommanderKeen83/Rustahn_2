@@ -22,4 +22,8 @@ impl Menu{
         false
     }
 
+    pub fn is_transcendent(&self) -> bool {
+        false
+    }
+
 }

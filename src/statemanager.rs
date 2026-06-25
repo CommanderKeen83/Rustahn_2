@@ -113,6 +113,16 @@ impl State{
         }
     }
 
+    pub fn is_transcendent(&self) -> bool {
+        match self {
+            State::Menu(screen) => screen.is_transcendent(),
+            State::GameIntro(screen) => screen.is_transcendent(),
+            State::Game(screen) => screen.is_transcendent(),
+            State::Pause(screen) => screen.is_transcendent(),
+            State::Options(screen) => screen.is_transcendent(),
+        }
+    }
+
 
 }
 
@@ -140,7 +150,19 @@ impl StateManager{
     }
 
     pub fn update(&mut self, dt: f32) {
-        for state in &mut self.stack {
+        if self.stack.is_empty() {
+            return;
+        }
+
+        let mut start_idx = self.stack.len() - 1;
+        while start_idx > 0 {
+            if !self.stack[start_idx].is_transcendent() {
+                break;
+            }
+            start_idx -= 1;
+        }
+
+        for state in &mut self.stack[start_idx..] {
             state.update(dt);
         }
     }
@@ -322,5 +344,20 @@ mod tests {
         assert!(!game.is_transparent());
         assert!(pause.is_transparent());
         assert!(options.is_transparent());
+    }
+
+    #[test]
+    fn test_screen_transcendence() {
+        let menu = State::fromTag(StateTag::Menu);
+        let game_intro = State::fromTag(StateTag::GameIntro);
+        let game = State::fromTag(StateTag::Game);
+        let pause = State::fromTag(StateTag::Pause);
+        let options = State::fromTag(StateTag::Options);
+
+        assert!(!menu.is_transcendent());
+        assert!(!game_intro.is_transcendent());
+        assert!(!game.is_transcendent());
+        assert!(!pause.is_transcendent());
+        assert!(!options.is_transcendent());
     }
 }

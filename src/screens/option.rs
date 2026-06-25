@@ -13,4 +13,8 @@ impl Options{
         true
     }
 
+    pub fn is_transcendent(&self) -> bool {
+        false
+    }
+
 }

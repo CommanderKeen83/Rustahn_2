@@ -13,4 +13,8 @@ impl Game{
         false
     }
 
+    pub fn is_transcendent(&self) -> bool {
+        false
+    }
+
 }

@@ -13,5 +13,8 @@ impl GameIntro{
         false
     }
 
+    pub fn is_transcendent(&self) -> bool {
+        false
+    }
 
 }
