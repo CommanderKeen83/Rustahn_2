@@ -6,21 +6,23 @@ const GAME_HEIGHT: i32 = 720;
 
 
 pub struct Window{
-    rl: RaylibHandle, 
     thread: RaylibThread,
     source_rec: Rectangle,
     dest_rec: Rectangle,
     target: RenderTexture2D,
-
+    rl: RaylibHandle, // Drops happen top to bottom, so RaylibHandle must always be dropped last!
 }
 
 impl Window{
-    pub fn init() -> Self{
-let (mut rl, thread) = sola_raylib::init()
+pub fn init() -> Self {
+    let (mut rl, thread) = sola_raylib::init()
         .size(GAME_WIDTH, GAME_HEIGHT)
         .title("Rabahn")
         .undecorated()
         .build();
+
+    let mut screen_w = rl.get_render_width() as f32;
+    let mut screen_h = rl.get_render_height() as f32;
 
     #[cfg(not(target_os = "macos"))]
     {
@@ -29,13 +31,16 @@ let (mut rl, thread) = sola_raylib::init()
         let mon_h = sola_raylib::core::window::get_monitor_height(monitor);
         rl.set_window_size(mon_w, mon_h);
         rl.set_window_position(0, 0);
+        screen_w = mon_w as f32;
+        screen_h = mon_h as f32;
     }
 
     #[cfg(target_os = "macos")]
-    rl.toggle_fullscreen();
-
-    let screen_w = rl.get_render_width() as f32;
-    let screen_h = rl.get_render_height() as f32;
+    {
+        rl.toggle_fullscreen();
+        screen_w = rl.get_render_width() as f32;
+        screen_h = rl.get_render_height() as f32;
+    }
     
     let game_w = GAME_WIDTH as f32;
     let game_h = GAME_HEIGHT as f32;
@@ -71,25 +76,22 @@ let (mut rl, thread) = sola_raylib::init()
     }
 
     pub fn draw(&mut self, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {
-        while !self.rl.window_should_close() {
-        {
-            let mut d_texture = self.rl.begin_texture_mode(&self.thread, &mut self.target);
-            d_texture.clear_background(Color::LIGHTBLUE);
-            d_texture.draw_text("hello, world", 12, 12, 20, Color::BLACK);
-            draw_fn(&mut d_texture);
-        }
-
-        let mut d = self.rl.begin_drawing(&self.thread);
-        d.clear_background(Color::BLACK);
-        d.draw_texture_pro(
-            &self.target,
-            self.source_rec,
-            self.dest_rec,
-            Vector2::new(0.0, 0.0),
-            0.0,
-            Color::WHITE,
-        );
+    {
+        let mut d_texture = self.rl.begin_texture_mode(&self.thread, &mut self.target);
+        d_texture.clear_background(Color::LIGHTBLUE);
+        d_texture.draw_text("hello, world", 12, 12, 20, Color::BLACK);
+        draw_fn(&mut d_texture);
     }
-    }
+    let mut d = self.rl.begin_drawing(&self.thread);
+    d.clear_background(Color::BLACK);
+    d.draw_texture_pro(
+        &self.target,
+        self.source_rec,
+        self.dest_rec,
+        Vector2::new(0.0, 0.0),
+        0.0,
+        Color::WHITE,
+    );
+}
 
 }
