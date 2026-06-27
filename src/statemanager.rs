@@ -27,7 +27,7 @@ impl State{
     fn options() -> Self{ Self::Options(screens::Options{} )}
 
     // all screens must implement these functions
-    pub fn on_enter(&mut self, rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager){
+    pub fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager){
         match self{
             State::Menu(screen) => screen.on_enter(rl, thread, resources),
             State::GameIntro(screen) => screen.on_enter(rl, thread, resources),
@@ -36,7 +36,7 @@ impl State{
             State::Options(screen) => screen.on_enter(rl, thread, resources)
         }
     }
-    pub fn on_activate(&mut self, rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager){
+    pub fn on_activate(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager){
         match self{
             State::Menu(screen) => screen.on_activate(rl, thread, resources),
             State::GameIntro(screen) => screen.on_activate(rl, thread, resources),
@@ -123,13 +123,13 @@ impl State{
         }
     }
 
-    pub fn get_post_process_shader(&mut self) -> Option<*mut Shader> {
+    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
         match self {
-            State::Menu(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
-            State::GameIntro(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
-            State::Game(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
-            State::Pause(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
-            State::Options(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+            State::Menu(screen) => screen.get_post_process_shader(),
+            State::GameIntro(screen) => screen.get_post_process_shader(),
+            State::Game(screen) => screen.get_post_process_shader(),
+            State::Pause(screen) => screen.get_post_process_shader(),
+            State::Options(screen) => screen.get_post_process_shader(),
         }
     }
 }
@@ -145,17 +145,27 @@ pub enum Transition{
     Clear, // pop all states
     Multiple(Vec<Transition>), // apply multiple transitions in sequence
 }
+
+pub struct StackEntry {
+    pub state: State,
+    pub has_entered: bool,
+    pub has_activated: bool,
+}
+
 pub struct StateManager{
-    stack: Vec<State>,
+    stack: Vec<StackEntry>,
     transitions: Vec<Transition>,
 }
+
 impl StateManager{
-    pub fn new(tag: StateTag, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) -> Self {
-        let mut state = State::from_tag(tag);
-        state.on_enter(rl.as_deref_mut(), thread, resources);
-        state.on_activate(rl, thread, resources);
+    pub fn new(tag: StateTag) -> Self {
+        let state = State::from_tag(tag);
         Self{
-            stack: vec![state],
+            stack: vec![StackEntry {
+                state,
+                has_entered: false,
+                has_activated: false,
+            }],
             transitions: vec![],
         }
     }
@@ -165,7 +175,7 @@ impl StateManager{
     }
 
     pub fn has_state(&self, tag: StateTag) -> bool {
-        self.stack.iter().any(|s| s.tag() == tag)
+        self.stack.iter().any(|s| s.state.tag() == tag)
     }
 
     pub fn update(&mut self, rl: &RaylibHandle, dt: f32) {
@@ -177,15 +187,15 @@ impl StateManager{
 
         let mut start_idx = self.stack.len() - 1;
         while start_idx > 0 {
-            if !self.stack[start_idx].is_transcendent() {
+            if !self.stack[start_idx].state.is_transcendent() {
                 break;
             }
             start_idx -= 1;
         }
 
         let mut transitions = Vec::new();
-        for state in &mut self.stack[start_idx..] {
-            if let Some(t) = state.update(rl, dt, has_save) {
+        for entry in &mut self.stack[start_idx..] {
+            if let Some(t) = entry.state.update(rl, dt, has_save) {
                 transitions.push(t);
             }
         }
@@ -201,79 +211,87 @@ impl StateManager{
         }
     }
 
-    pub fn push(&mut self, state: State, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    pub fn push(&mut self, state: State) {
         if let Some(top) = self.stack.last_mut() {
-            top.on_deactivate();
+            top.state.on_deactivate();
+            top.has_activated = false;
         }
-        let mut state = state;
-        state.on_enter(rl.as_deref_mut(), thread, resources);
-        state.on_activate(rl, thread, resources);
-        self.stack.push(state);
+        self.stack.push(StackEntry {
+            state,
+            has_entered: false,
+            has_activated: false,
+        });
     }
 
-    pub fn pop(&mut self, rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    pub fn pop(&mut self) {
         if let Some(mut top) = self.stack.pop() {
-            top.on_deactivate();
-            top.on_exit();
+            top.state.on_deactivate();
+            top.state.on_exit();
         }
         if let Some(new_top) = self.stack.last_mut() {
-            new_top.on_activate(rl, thread, resources);
+            new_top.has_activated = false;
         }
     }
 
-    pub fn swap(&mut self, state: State, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    pub fn swap(&mut self, state: State) {
         if let Some(mut top) = self.stack.pop() {
-            top.on_deactivate();
-            top.on_exit();
+            top.state.on_deactivate();
+            top.state.on_exit();
         }
-        let mut state = state;
-        state.on_enter(rl.as_deref_mut(), thread, resources);
-        state.on_activate(rl, thread, resources);
-        self.stack.push(state);
+        self.stack.push(StackEntry {
+            state,
+            has_entered: false,
+            has_activated: false,
+        });
     }
 
-    pub fn clear_and_push(&mut self, state: State, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    pub fn clear_and_push(&mut self, state: State) {
         while let Some(mut top) = self.stack.pop() {
-            top.on_deactivate();
-            top.on_exit();
+            top.state.on_deactivate();
+            top.state.on_exit();
         }
-        let mut state = state;
-        state.on_enter(rl.as_deref_mut(), thread, resources);
-        state.on_activate(rl, thread, resources);
-        self.stack.push(state);
+        self.stack.push(StackEntry {
+            state,
+            has_entered: false,
+            has_activated: false,
+        });
     }
 
-    pub fn switch(&mut self, tag: StateTag, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
-        let position = self.stack.iter().position(|s| s.tag() == tag);
+    pub fn switch(&mut self, tag: StateTag) {
+        let position = self.stack.iter().position(|s| s.state.tag() == tag);
         if let Some(pos) = position {
             if pos < self.stack.len() - 1 {
                 if let Some(top) = self.stack.last_mut() {
-                    top.on_deactivate();
+                    top.state.on_deactivate();
+                    top.has_activated = false;
                 }
                 let mut existing_state = self.stack.remove(pos);
-                existing_state.on_activate(rl, thread, resources);
+                existing_state.has_activated = false;
                 self.stack.push(existing_state);
             }
         } else {
             if let Some(top) = self.stack.last_mut() {
-                top.on_deactivate();
+                top.state.on_deactivate();
+                top.has_activated = false;
             }
-            let mut state = State::from_tag(tag);
-            state.on_enter(rl.as_deref_mut(), thread, resources);
-            state.on_activate(rl, thread, resources);
-            self.stack.push(state);
+            let state = State::from_tag(tag);
+            self.stack.push(StackEntry {
+                state,
+                has_entered: false,
+                has_activated: false,
+            });
         }
     }
 
-    pub fn remove(&mut self, tag: StateTag, rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
-        let position = self.stack.iter().position(|s| s.tag() == tag);
+    pub fn remove(&mut self, tag: StateTag) {
+        let position = self.stack.iter().position(|s| s.state.tag() == tag);
         if let Some(pos) = position {
-            let mut state = self.stack.remove(pos);
-            state.on_deactivate();
-            state.on_exit();
+            let mut entry = self.stack.remove(pos);
+            entry.state.on_deactivate();
+            entry.state.on_exit();
             if pos == self.stack.len() {
                 if let Some(new_top) = self.stack.last_mut() {
-                    new_top.on_activate(rl, thread, resources);
+                    new_top.has_activated = false;
                 }
             }
         }
@@ -281,52 +299,69 @@ impl StateManager{
 
     pub fn clear(&mut self) {
         while let Some(mut top) = self.stack.pop() {
-            top.on_deactivate();
-            top.on_exit();
+            top.state.on_deactivate();
+            top.state.on_exit();
         }
     }
 
     pub fn init_resources(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        for state in &mut self.stack {
-            if let State::Menu(menu) = state {
+        for entry in &mut self.stack {
+            if let State::Menu(menu) = &mut entry.state {
                 menu.init_shader(rl, thread);
             }
         }
     }
 
-    pub fn get_post_process_shader(&mut self) -> Option<*mut Shader> {
+    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
         if let Some(top) = self.stack.last_mut() {
-            top.get_post_process_shader()
+            top.state.get_post_process_shader()
         } else {
             None
         }
     }
 
-    pub fn late_update(&mut self, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    pub fn late_update(&mut self) {
         let pending: Vec<Transition> = self.transitions.drain(..).collect();
         for transition in pending {
-            self.apply_transition(transition, rl.as_deref_mut(), thread, resources);
+            self.apply_transition(transition);
         }
     }
 
-    fn apply_transition(&mut self, transition: Transition, mut rl: Option<&mut RaylibHandle>, thread: Option<&RaylibThread>, resources: &mut ResourceManager) {
+    fn apply_transition(&mut self, transition: Transition) {
         match transition {
             Transition::None => {}
-            Transition::Push(state) => self.push(state, rl, thread, resources),
-            Transition::Switch(tag) => self.switch(tag, rl, thread, resources),
-            Transition::Pop => self.pop(rl, thread, resources),
-            Transition::Swap(state) => self.swap(state, rl, thread, resources),
-            Transition::ClearAndPush(state) => self.clear_and_push(state, rl, thread, resources),
-            Transition::Remove(tag) => self.remove(tag, rl, thread, resources),
+            Transition::Push(state) => self.push(state),
+            Transition::Switch(tag) => self.switch(tag),
+            Transition::Pop => self.pop(),
+            Transition::Swap(state) => self.swap(state),
+            Transition::ClearAndPush(state) => self.clear_and_push(state),
+            Transition::Remove(tag) => self.remove(tag),
             Transition::Clear => self.clear(),
             Transition::Multiple(list) => {
                 for t in list {
-                    self.apply_transition(t, rl.as_deref_mut(), thread, resources);
+                    self.apply_transition(t);
                 }
             }
         }
     }
 
+    pub fn apply_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        // 1. Enter any unentered states
+        for entry in &mut self.stack {
+            if !entry.has_entered {
+                entry.state.on_enter(rl, thread, resources);
+                entry.has_entered = true;
+            }
+        }
+
+        // 2. Activate the top state if not already active
+        if let Some(top) = self.stack.last_mut() {
+            if !top.has_activated {
+                top.state.on_activate(rl, thread, resources);
+                top.has_activated = true;
+            }
+        }
+    }
 
     pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         if self.stack.is_empty() {
@@ -335,14 +370,14 @@ impl StateManager{
 
         let mut start_idx = self.stack.len() - 1;
         while start_idx > 0 {
-            if !self.stack[start_idx].is_transparent() {
+            if !self.stack[start_idx].state.is_transparent() {
                 break;
             }
             start_idx -= 1;
         }
 
         for i in start_idx..self.stack.len() {
-            self.stack[i].draw(canvas, resources);
+            self.stack[i].state.draw(canvas, resources);
         }
     }
 }
@@ -354,59 +389,56 @@ mod tests {
 
     #[test]
     fn test_switch_new_state() {
-        let mut resources = ResourceManager::new();
-        let mut manager = StateManager::new(StateTag::Menu, None, None, &mut resources);
+        let mut manager = StateManager::new(StateTag::Menu);
         assert_eq!(manager.stack.len(), 1);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
 
         // Switch to a new state: Game
-        manager.switch(StateTag::Game, None, None, &mut resources);
+        manager.switch(StateTag::Game);
         assert_eq!(manager.stack.len(), 2);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
-        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].state.tag(), StateTag::Game);
     }
 
     #[test]
     fn test_switch_existing_state_middle() {
-        let mut resources = ResourceManager::new();
-        let mut manager = StateManager::new(StateTag::Menu, None, None, &mut resources);
-        manager.switch(StateTag::Game, None, None, &mut resources);
-        manager.switch(StateTag::Pause, None, None, &mut resources);
+        let mut manager = StateManager::new(StateTag::Menu);
+        manager.switch(StateTag::Game);
+        manager.switch(StateTag::Pause);
         
         // Stack should be [Menu, Game, Pause]
         assert_eq!(manager.stack.len(), 3);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
-        assert_eq!(manager.stack[1].tag(), StateTag::Game);
-        assert_eq!(manager.stack[2].tag(), StateTag::Pause);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].state.tag(), StateTag::Game);
+        assert_eq!(manager.stack[2].state.tag(), StateTag::Pause);
 
         // Switch to Game (which already exists at index 1)
-        manager.switch(StateTag::Game, None, None, &mut resources);
+        manager.switch(StateTag::Game);
         
         // Stack should now be [Menu, Pause, Game]
         assert_eq!(manager.stack.len(), 3);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
-        assert_eq!(manager.stack[1].tag(), StateTag::Pause);
-        assert_eq!(manager.stack[2].tag(), StateTag::Game);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].state.tag(), StateTag::Pause);
+        assert_eq!(manager.stack[2].state.tag(), StateTag::Game);
     }
 
     #[test]
     fn test_switch_existing_state_top() {
-        let mut resources = ResourceManager::new();
-        let mut manager = StateManager::new(StateTag::Menu, None, None, &mut resources);
-        manager.switch(StateTag::Game, None, None, &mut resources);
+        let mut manager = StateManager::new(StateTag::Menu);
+        manager.switch(StateTag::Game);
         
         // Stack should be [Menu, Game]
         assert_eq!(manager.stack.len(), 2);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
-        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].state.tag(), StateTag::Game);
 
         // Switch to Game (which is already top)
-        manager.switch(StateTag::Game, None, None, &mut resources);
+        manager.switch(StateTag::Game);
 
         // Stack should remain [Menu, Game]
         assert_eq!(manager.stack.len(), 2);
-        assert_eq!(manager.stack[0].tag(), StateTag::Menu);
-        assert_eq!(manager.stack[1].tag(), StateTag::Game);
+        assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
+        assert_eq!(manager.stack[1].state.tag(), StateTag::Game);
     }
 
     #[test]

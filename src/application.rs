@@ -14,7 +14,8 @@ impl Application{
         let mut resource_manager = ResourceManager::new();
 
         let (rl, thread) = window.get_handles();
-        let mut statemanager = StateManager::new(StateTag::Menu, Some(rl), Some(thread), &mut resource_manager);
+        let mut statemanager = StateManager::new(StateTag::Menu);
+        statemanager.apply_lifecycles(rl, thread, &mut resource_manager);
         statemanager.init_resources(rl, thread);
 
         Self{
@@ -26,19 +27,20 @@ impl Application{
     }
     pub fn update(&mut self, delta_time: f32){
         self.statemanager.update(self.window.rl(), delta_time);
+        self.statemanager.late_update();
         
         let (rl, thread) = self.window.get_handles();
-        self.statemanager.late_update(Some(rl), Some(thread), &mut self.resource_manager);
+        self.statemanager.apply_lifecycles(rl, thread, &mut self.resource_manager);
     }
     pub fn draw(&mut self){
         let resource_manager = &self.resource_manager;
-        let shader_ptr = self.statemanager.get_post_process_shader();
-        let shader = shader_ptr.map(|p| unsafe { &mut *p });
         
-        let statemanager = &mut self.statemanager;
-        self.window.draw(shader, |canvas|{
-            statemanager.draw(canvas, resource_manager);
+        self.window.render_to_target(|canvas|{
+            self.statemanager.draw(canvas, resource_manager);
         });
+        
+        let shader = self.statemanager.get_post_process_shader();
+        self.window.draw_to_screen(shader);
     }
     // main game loop
     pub fn run(&mut self){
