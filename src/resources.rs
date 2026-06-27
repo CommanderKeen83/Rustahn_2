@@ -19,7 +19,7 @@ impl ResourceManager {
         thread: &RaylibThread,
         id: SpriteID,
         path: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), String> { // Returning Ok(()) indicates "the operation succeeded, but there is no value to return."
         let texture = rl.load_texture(thread, path).map_err(|e| format!("{:?}", e))?;
         self.textures.insert(id, texture);
         Ok(())

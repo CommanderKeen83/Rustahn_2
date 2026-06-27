@@ -11,14 +11,15 @@ impl Menu{
     pub fn update(&mut self, _dt: f32){}
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
         if let Some(tex) = resources.get_texture(&SpriteID::MenuBackground) {
-            canvas.draw_texture(tex, 0, 0, Color::WHITE);
-        } else {
-            // test: just draw a red triangle to prove the pipeline works
-            canvas.draw_triangle(
-                Vector2::new(640.0, 200.0),
-                Vector2::new(400.0, 500.0),
-                Vector2::new(880.0, 500.0),
-                Color::RED,
+            let source = Rectangle::new(0.0, 0.0, tex.width() as f32, tex.height() as f32);
+            let dest = Rectangle::new(0.0, 0.0, GAME_WIDTH as f32, GAME_HEIGHT as f32);
+            canvas.draw_texture_pro(
+                tex,
+                source,
+                dest,
+                Vector2::new(0.0, 0.0),
+                0.0,
+                Color::WHITE,
             );
         }
     }

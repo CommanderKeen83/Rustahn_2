@@ -1,15 +1,15 @@
 use sola_raylib::prelude::*;
 
 
-const GAME_WIDTH: i32 = 1280;
-const GAME_HEIGHT: i32 = 720;
+pub const GAME_WIDTH: i32 = 1280;
+pub const GAME_HEIGHT: i32 = 720;
 
 
 pub struct Window{
     thread: RaylibThread,
     source_rec: Rectangle,
     dest_rec: Rectangle,
-    target: RenderTexture2D,
+    target: RenderTexture2D, // everything gets drawn to this virtual Canvas (1280x720). It gets scaled to the size of the window (GAME_WIDTH, GAME_HEIGHT).
     rl: RaylibHandle, // Drops happen from top to bottom, so RaylibHandle must always be dropped last, otherwise the lost Raylib Context will cause segfaults!
 }
 
@@ -21,26 +21,21 @@ pub fn init() -> Self {
         .undecorated()
         .build();
 
-    let mut screen_w = rl.get_render_width() as f32;
-    let mut screen_h = rl.get_render_height() as f32;
-
     #[cfg(not(target_os = "macos"))]
-    {
+    let (screen_w, screen_h) = {
         let monitor = sola_raylib::core::window::get_current_monitor();
         let mon_w = sola_raylib::core::window::get_monitor_width(monitor);
         let mon_h = sola_raylib::core::window::get_monitor_height(monitor);
         rl.set_window_size(mon_w, mon_h);
         rl.set_window_position(0, 0);
-        screen_w = mon_w as f32;
-        screen_h = mon_h as f32;
-    }
+        (mon_w as f32, mon_h as f32)
+    };
 
     #[cfg(target_os = "macos")]
-    {
+    let (screen_w, screen_h) = {
         rl.toggle_fullscreen();
-        screen_w = rl.get_render_width() as f32;
-        screen_h = rl.get_render_height() as f32;
-    }
+        (rl.get_render_width() as f32, rl.get_render_height() as f32)
+    };
     
     let game_w = GAME_WIDTH as f32;
     let game_h = GAME_HEIGHT as f32;
@@ -66,7 +61,7 @@ pub fn init() -> Self {
 
         Self { rl, thread, source_rec, dest_rec, target }
 
-    }
+    } // end of Window::init()
     pub fn should_close(&self) -> bool{
         self.rl.window_should_close()
     }

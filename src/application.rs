@@ -2,8 +2,8 @@ use crate::prelude::*;
 
 #[allow(dead_code)]
 pub struct Application{
+    resource_manager: ResourceManager, // must drop before window, since window holds Raylib context, otherwise SEGFAULT
     window: Window,
-    resource_manager: ResourceManager,
     gamestate: Gamestate,
     statemanager: StateManager,
 }
@@ -24,8 +24,8 @@ impl Application{
         }
 
         Self{
-            window,
             resource_manager,
+            window,
             gamestate: Gamestate::new(),
             statemanager: StateManager::new(StateTag::Menu),
         }
