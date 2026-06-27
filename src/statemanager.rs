@@ -20,7 +20,7 @@ pub enum State{
 
 impl State{
     // builder functions
-    fn menu() -> Self{ Self::Menu(screens::Menu{} )}
+    fn menu() -> Self{ Self::Menu(screens::Menu::new() )}
     fn gameintro() -> Self{ Self::GameIntro(screens::GameIntro{} )}
     fn game() -> Self{ Self::Game(Box::new(screens::Game{} ))}
     fn pause() -> Self{ Self::Pause(screens::Pause{} )}
@@ -84,13 +84,13 @@ impl State{
         }
     }
 
-    pub fn update(&mut self, dt: f32){
-        match self{
-            State::Menu(screen) => screen.update(dt),
-            State::GameIntro(screen) => screen.update(dt),
-            State::Game(screen) => screen.update(dt),
-            State::Pause(screen) => screen.update(dt),
-            State::Options(screen) => screen.update(dt)
+    pub fn update(&mut self, rl: &RaylibHandle, dt: f32, has_save: bool) -> Option<Transition> {
+        match self {
+            State::Menu(screen) => screen.update(rl, dt, has_save),
+            State::GameIntro(screen) => screen.update(rl, dt),
+            State::Game(screen) => screen.update(rl, dt),
+            State::Pause(screen) => screen.update(rl, dt),
+            State::Options(screen) => screen.update(rl, dt),
         }
     }
     pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
@@ -133,6 +133,9 @@ pub enum Transition{
     Pop, // remove state on Top of The Stack
     Swap(State), // pop current, push new
     ClearAndPush(State), // pop all, push new
+    Remove(StateTag), // remove a state from anywhere in the stack
+    Clear, // pop all states
+    Multiple(Vec<Transition>), // apply multiple transitions in sequence
 }
 pub struct StateManager{
     stack: Vec<State>,
@@ -149,10 +152,20 @@ impl StateManager{
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+
+    pub fn has_state(&self, tag: StateTag) -> bool {
+        self.stack.iter().any(|s| s.tag() == tag)
+    }
+
+    pub fn update(&mut self, rl: &RaylibHandle, dt: f32) {
         if self.stack.is_empty() {
             return;
         }
+
+        let has_save = self.has_state(StateTag::Game);
 
         let mut start_idx = self.stack.len() - 1;
         while start_idx > 0 {
@@ -162,8 +175,14 @@ impl StateManager{
             start_idx -= 1;
         }
 
+        let mut transitions = Vec::new();
         for state in &mut self.stack[start_idx..] {
-            state.update(dt);
+            if let Some(t) = state.update(rl, dt, has_save) {
+                transitions.push(t);
+            }
+        }
+        for t in transitions {
+            self.add_transition(t);
         }
     }
 
@@ -238,16 +257,48 @@ impl StateManager{
         }
     }
 
+    pub fn remove(&mut self, tag: StateTag) {
+        let position = self.stack.iter().position(|s| s.tag() == tag);
+        if let Some(pos) = position {
+            let mut state = self.stack.remove(pos);
+            state.on_deactivate();
+            state.on_exit();
+            if pos == self.stack.len() {
+                if let Some(new_top) = self.stack.last_mut() {
+                    new_top.on_activate();
+                }
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        while let Some(mut top) = self.stack.pop() {
+            top.on_deactivate();
+            top.on_exit();
+        }
+    }
+
     pub fn late_update(&mut self) {
         let pending: Vec<Transition> = self.transitions.drain(..).collect();
         for transition in pending {
-            match transition {
-                Transition::None => {}
-                Transition::Push(state) => self.push(state),
-                Transition::Switch(tag) => self.switch(tag),
-                Transition::Pop => self.pop(),
-                Transition::Swap(state) => self.swap(state),
-                Transition::ClearAndPush(state) => self.clear_and_push(state),
+            self.apply_transition(transition);
+        }
+    }
+
+    fn apply_transition(&mut self, transition: Transition) {
+        match transition {
+            Transition::None => {}
+            Transition::Push(state) => self.push(state),
+            Transition::Switch(tag) => self.switch(tag),
+            Transition::Pop => self.pop(),
+            Transition::Swap(state) => self.swap(state),
+            Transition::ClearAndPush(state) => self.clear_and_push(state),
+            Transition::Remove(tag) => self.remove(tag),
+            Transition::Clear => self.clear(),
+            Transition::Multiple(list) => {
+                for t in list {
+                    self.apply_transition(t);
+                }
             }
         }
     }
