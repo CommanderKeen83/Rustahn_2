@@ -93,7 +93,7 @@ impl State{
             State::Options(screen) => screen.update(rl, dt),
         }
     }
-    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
+    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
         match self{
             State::Menu(screen) => screen.draw(canvas, resources),
             State::GameIntro(screen) => screen.draw(canvas, resources),
@@ -123,7 +123,15 @@ impl State{
         }
     }
 
-
+    pub fn get_post_process_shader(&mut self) -> Option<*mut Shader> {
+        match self {
+            State::Menu(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+            State::GameIntro(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+            State::Game(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+            State::Pause(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+            State::Options(screen) => screen.get_post_process_shader().map(|s| s as *mut Shader),
+        }
+    }
 }
 
 pub enum Transition{
@@ -278,6 +286,22 @@ impl StateManager{
         }
     }
 
+    pub fn init_resources(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+        for state in &mut self.stack {
+            if let State::Menu(menu) = state {
+                menu.init_shader(rl, thread);
+            }
+        }
+    }
+
+    pub fn get_post_process_shader(&mut self) -> Option<*mut Shader> {
+        if let Some(top) = self.stack.last_mut() {
+            top.get_post_process_shader()
+        } else {
+            None
+        }
+    }
+
     pub fn late_update(&mut self) {
         let pending: Vec<Transition> = self.transitions.drain(..).collect();
         for transition in pending {
@@ -304,7 +328,7 @@ impl StateManager{
     }
 
 
-    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
+    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         if self.stack.is_empty() {
             return;
         }

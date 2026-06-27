@@ -3,9 +3,9 @@ use crate::prelude::*;
 #[allow(dead_code)]
 pub struct Application{
     resource_manager: ResourceManager, // must drop before window, since window holds Raylib context, otherwise SEGFAULT
-    window: Window,
+    statemanager: StateManager,        // must drop before window to unload shaders safely, otherwise SEGFAULT
     gamestate: Gamestate,
-    statemanager: StateManager,
+    window: Window,
 }
 
 impl Application{
@@ -23,11 +23,14 @@ impl Application{
             eprintln!("Failed to load menu background: {}", e);
         }
 
+        let mut statemanager = StateManager::new(StateTag::Menu);
+        statemanager.init_resources(rl, thread);
+
         Self{
             resource_manager,
-            window,
+            statemanager,
             gamestate: Gamestate::new(),
-            statemanager: StateManager::new(StateTag::Menu),
+            window,
         }
     }
     pub fn update(&mut self, delta_time: f32){
@@ -36,8 +39,11 @@ impl Application{
     }
     pub fn draw(&mut self){
         let resource_manager = &self.resource_manager;
-        let statemanager = &self.statemanager;
-        self.window.draw(|canvas|{
+        let shader_ptr = self.statemanager.get_post_process_shader();
+        let shader = shader_ptr.map(|p| unsafe { &mut *p });
+        
+        let statemanager = &mut self.statemanager;
+        self.window.draw(shader, |canvas|{
             statemanager.draw(canvas, resource_manager);
         });
     }

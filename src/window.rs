@@ -86,7 +86,7 @@ pub fn init() -> Self {
         (&mut self.rl, &self.thread)
     }
 
-    pub fn draw(&mut self, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {
+    pub fn draw(&mut self, shader: Option<&mut Shader>, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {
     {
         let mut d_texture = self.rl.begin_texture_mode(&self.thread, &mut self.target);
         d_texture.clear_background(Color::LIGHTBLUE);
@@ -95,14 +95,26 @@ pub fn init() -> Self {
     }
     let mut d = self.rl.begin_drawing(&self.thread);
     d.clear_background(Color::BLACK);
-    d.draw_texture_pro(
-        &self.target,
-        self.source_rec,
-        self.dest_rec,
-        Vector2::new(0.0, 0.0),
-        0.0,
-        Color::WHITE,
-    );
-}
+    if let Some(sh) = shader {
+        let mut shader_mode = d.begin_shader_mode(sh);
+        shader_mode.draw_texture_pro(
+            &self.target,
+            self.source_rec,
+            self.dest_rec,
+            Vector2::new(0.0, 0.0),
+            0.0,
+            Color::WHITE,
+        );
+    } else {
+        d.draw_texture_pro(
+            &self.target,
+            self.source_rec,
+            self.dest_rec,
+            Vector2::new(0.0, 0.0),
+            0.0,
+            Color::WHITE,
+        );
+    }
+    }
 
 }

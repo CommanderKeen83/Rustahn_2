@@ -10,10 +10,14 @@ impl Pause{
     pub fn update(&mut self, _rl: &RaylibHandle, _dt: f32) -> Option<crate::prelude::Transition> {
         None
     }
-    pub fn draw(&self, _canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager){}
+    pub fn draw(&mut self, _canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager){}
 
     pub fn is_transparent(&self) -> bool {
         true
+    }
+
+    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
+        None
     }
 
     pub fn is_transcendent(&self) -> bool {
