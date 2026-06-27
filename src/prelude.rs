@@ -11,3 +11,5 @@ pub use crate::ecs;
 pub use crate::application::*;
 pub use crate::screens;
 pub use crate::statemanager::*;
+pub use crate::resources::ResourceManager;
+

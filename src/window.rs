@@ -10,7 +10,7 @@ pub struct Window{
     source_rec: Rectangle,
     dest_rec: Rectangle,
     target: RenderTexture2D,
-    rl: RaylibHandle, // Drops happen top to bottom, so RaylibHandle must always be dropped last!
+    rl: RaylibHandle, // Drops happen from top to bottom, so RaylibHandle must always be dropped last, otherwise the lost Raylib Context will cause segfaults!
 }
 
 impl Window{
@@ -73,6 +73,22 @@ pub fn init() -> Self {
 
     pub fn get_delta_time(&self) -> f32{
         self.rl.get_frame_time()
+    }
+
+    pub fn rl(&self) -> &RaylibHandle {
+        &self.rl
+    }
+
+    pub fn rl_mut(&mut self) -> &mut RaylibHandle {
+        &mut self.rl
+    }
+
+    pub fn thread(&self) -> &RaylibThread {
+        &self.thread
+    }
+
+    pub fn get_handles(&mut self) -> (&mut RaylibHandle, &RaylibThread) {
+        (&mut self.rl, &self.thread)
     }
 
     pub fn draw(&mut self, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {

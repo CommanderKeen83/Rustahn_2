@@ -93,13 +93,13 @@ impl State{
             State::Options(screen) => screen.update(dt)
         }
     }
-    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>){
+    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
         match self{
-            State::Menu(screen) => screen.draw(canvas),
-            State::GameIntro(screen) => screen.draw(canvas),
-            State::Game(screen) => screen.draw(canvas),
-            State::Pause(screen) => screen.draw(canvas),
-            State::Options(screen) => screen.draw(canvas)
+            State::Menu(screen) => screen.draw(canvas, resources),
+            State::GameIntro(screen) => screen.draw(canvas, resources),
+            State::Game(screen) => screen.draw(canvas, resources),
+            State::Pause(screen) => screen.draw(canvas, resources),
+            State::Options(screen) => screen.draw(canvas, resources)
         }
     }
 
@@ -253,7 +253,7 @@ impl StateManager{
     }
 
 
-    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>) {
+    pub fn draw(&self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         if self.stack.is_empty() {
             return;
         }
@@ -267,7 +267,7 @@ impl StateManager{
         }
 
         for i in start_idx..self.stack.len() {
-            self.stack[i].draw(canvas);
+            self.stack[i].draw(canvas, resources);
         }
     }
 }

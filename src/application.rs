@@ -1,18 +1,31 @@
-use crate::window::*;
-use crate::gamestate::*;
-use crate::statemanager::*;
+use crate::prelude::*;
 
 #[allow(dead_code)]
 pub struct Application{
     window: Window,
+    resource_manager: ResourceManager,
     gamestate: Gamestate,
     statemanager: StateManager,
 }
 
 impl Application{
     pub fn new() -> Self{
+        let mut window = Window::init();
+        let mut resource_manager = ResourceManager::new();
+
+        let (rl, thread) = window.get_handles();
+        if let Err(e) = resource_manager.load_texture(
+            rl,
+            thread,
+            SpriteID::MenuBackground,
+            "resources/graphics/main_menu.png",
+        ) {
+            eprintln!("Failed to load menu background: {}", e);
+        }
+
         Self{
-            window: Window::init(),
+            window,
+            resource_manager,
             gamestate: Gamestate::new(),
             statemanager: StateManager::new(StateTag::Menu),
         }
@@ -22,10 +35,11 @@ impl Application{
         self.statemanager.late_update();
     }
     pub fn draw(&mut self){
-            self.window.draw(|canvas|{
-                self.statemanager.draw(canvas);
-            });
-
+        let resource_manager = &self.resource_manager;
+        let statemanager = &self.statemanager;
+        self.window.draw(|canvas|{
+            statemanager.draw(canvas, resource_manager);
+        });
     }
     // main game loop
     pub fn run(&mut self){

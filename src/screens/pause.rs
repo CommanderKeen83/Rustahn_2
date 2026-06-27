@@ -1,4 +1,5 @@
 use sola_raylib::prelude::*;
+use crate::prelude::ResourceManager;
 pub struct Pause{}
 impl Pause{
     pub fn on_enter(&mut self){}
@@ -7,7 +8,7 @@ impl Pause{
     pub fn on_exit(&mut self){}
 
     pub fn update(&mut self, _dt: f32){}
-    pub fn draw(&self, _canvas: &mut RaylibTextureMode<RaylibHandle>){}
+    pub fn draw(&self, _canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager){}
 
     pub fn is_transparent(&self) -> bool {
         true
