@@ -21,7 +21,7 @@ pub enum State{
 impl State{
     // builder functions
     fn menu() -> Self{ Self::Menu(screens::Menu::new() )}
-    fn gameintro() -> Self{ Self::GameIntro(screens::GameIntro{} )}
+    fn gameintro() -> Self{ Self::GameIntro(screens::GameIntro::new() )}
     fn game() -> Self{ Self::Game(Box::new(screens::Game{} ))}
     fn pause() -> Self{ Self::Pause(screens::Pause{} )}
     fn options() -> Self{ Self::Options(screens::Options{} )}
