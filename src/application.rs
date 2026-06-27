@@ -14,16 +14,7 @@ impl Application{
         let mut resource_manager = ResourceManager::new();
 
         let (rl, thread) = window.get_handles();
-        if let Err(e) = resource_manager.load_texture(
-            rl,
-            thread,
-            SpriteID::MenuBackground,
-            "resources/graphics/main_menu.png",
-        ) {
-            eprintln!("Failed to load menu background: {}", e);
-        }
-
-        let mut statemanager = StateManager::new(StateTag::Menu);
+        let mut statemanager = StateManager::new(StateTag::Menu, Some(rl), Some(thread), &mut resource_manager);
         statemanager.init_resources(rl, thread);
 
         Self{
@@ -35,7 +26,9 @@ impl Application{
     }
     pub fn update(&mut self, delta_time: f32){
         self.statemanager.update(self.window.rl(), delta_time);
-        self.statemanager.late_update();
+        
+        let (rl, thread) = self.window.get_handles();
+        self.statemanager.late_update(Some(rl), Some(thread), &mut self.resource_manager);
     }
     pub fn draw(&mut self){
         let resource_manager = &self.resource_manager;

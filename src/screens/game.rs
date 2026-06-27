@@ -2,8 +2,8 @@ use sola_raylib::prelude::*;
 use crate::prelude::ResourceManager;
 pub struct Game{}
 impl Game{
-    pub fn on_enter(&mut self){}
-    pub fn on_activate(&mut self){}
+    pub fn on_enter(&mut self, _rl: Option<&mut RaylibHandle>, _thread: Option<&RaylibThread>, _resources: &mut ResourceManager){}
+    pub fn on_activate(&mut self, _rl: Option<&mut RaylibHandle>, _thread: Option<&RaylibThread>, _resources: &mut ResourceManager){}
     pub fn on_deactivate(&mut self){}
     pub fn on_exit(&mut self){}
 
