@@ -29,9 +29,15 @@ impl Game {
     }
     pub fn draw(
         &mut self,
-        _canvas: &mut RaylibTextureMode<RaylibHandle>,
+        canvas: &mut RaylibTextureMode<RaylibHandle>,
         _resources: &ResourceManager,
     ) {
+        canvas.draw_triangle(
+            Vector2::new(200.0, 100.0),
+            Vector2::new(100.0, 100.0),
+            Vector2::new(150.0, 200.0),
+            Color::RED,
+        );
     }
 
     pub fn is_transparent(&self) -> bool {
