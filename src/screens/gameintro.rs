@@ -1,4 +1,4 @@
-use crate::prelude::{ResourceManager, SpriteID, StateTag, Transition};
+use crate::prelude::*;
 use sola_raylib::prelude::*;
 
 const INTRO_TEXT: &str = "\n\
@@ -96,7 +96,13 @@ impl GameIntro {
 
     pub fn on_exit(&mut self) {}
 
-    pub fn update(&mut self, rl: &RaylibHandle, dt: f32) -> Option<Transition> {
+    pub fn update(
+        &mut self,
+        rl: &RaylibHandle,
+        dt: f32,
+        audio: &mut AudioManager<'_, '_>,
+    ) -> Option<Transition> {
+        audio.play_music(MusicID::GameIntroScreen);
         self.passed_time += dt;
 
         if let Some(ref mut flicker) = self.flicker_shader {

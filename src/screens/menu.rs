@@ -1,5 +1,5 @@
-use sola_raylib::prelude::*;
 use crate::prelude::*;
+use sola_raylib::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuAction {
@@ -15,10 +15,22 @@ struct MenuItem {
 }
 
 const MENU_ITEMS: [MenuItem; 4] = [
-    MenuItem { name: "New Game", action: MenuAction::NewGame },
-    MenuItem { name: "Continue Game", action: MenuAction::ContinueGame },
-    MenuItem { name: "Options", action: MenuAction::Options },
-    MenuItem { name: "Quit", action: MenuAction::Quit },
+    MenuItem {
+        name: "New Game",
+        action: MenuAction::NewGame,
+    },
+    MenuItem {
+        name: "Continue Game",
+        action: MenuAction::ContinueGame,
+    },
+    MenuItem {
+        name: "Options",
+        action: MenuAction::Options,
+    },
+    MenuItem {
+        name: "Quit",
+        action: MenuAction::Quit,
+    },
 ];
 
 pub struct Menu {
@@ -40,7 +52,12 @@ impl Menu {
         }
     }
 
-    pub fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+    pub fn on_enter(
+        &mut self,
+        rl: &mut RaylibHandle,
+        thread: &RaylibThread,
+        resources: &mut ResourceManager,
+    ) {
         if let Err(e) = resources.load_texture(
             rl,
             thread,
@@ -50,7 +67,13 @@ impl Menu {
             eprintln!("Failed to load menu background: {}", e);
         }
     }
-    pub fn on_activate(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
+    pub fn on_activate(
+        &mut self,
+        _rl: &mut RaylibHandle,
+        _thread: &RaylibThread,
+        _resources: &mut ResourceManager,
+    ) {
+    }
     pub fn on_deactivate(&mut self) {}
     pub fn on_exit(&mut self) {}
 
@@ -60,7 +83,14 @@ impl Menu {
         self.crt_shader = Some(shader);
     }
 
-    pub fn update(&mut self, rl: &RaylibHandle, dt: f32, has_save: bool) -> Option<Transition> {
+    pub fn update(
+        &mut self,
+        rl: &RaylibHandle,
+        dt: f32,
+        has_save: bool,
+        audio: &mut AudioManager<'_, '_>,
+    ) -> Option<Transition> {
+        audio.play_music(MusicID::MainMenuTheme);
         self.flicker += dt;
         self.has_save = has_save;
 
@@ -69,6 +99,7 @@ impl Menu {
         }
 
         if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
+            audio.play_sfx(SoundID::MenuSelect);
             let selected_action = MENU_ITEMS[self.selected].action;
             match selected_action {
                 MenuAction::NewGame => {
@@ -92,16 +123,19 @@ impl Menu {
                 }
             }
         } else if rl.is_key_pressed(KeyboardKey::KEY_UP) {
+            audio.play_sfx(SoundID::MenuSelect);
             self.select_previous();
             if MENU_ITEMS[self.selected].action == MenuAction::ContinueGame && !self.has_save {
                 self.select_previous();
             }
         } else if rl.is_key_pressed(KeyboardKey::KEY_DOWN) {
+            audio.play_sfx(SoundID::MenuSelect);
             self.select_next();
             if MENU_ITEMS[self.selected].action == MenuAction::ContinueGame && !self.has_save {
                 self.select_next();
             }
         } else if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
+            audio.play_sfx(SoundID::MenuSelect);
             if self.has_save {
                 return Some(Transition::Switch(StateTag::Game));
             } else {
@@ -123,8 +157,18 @@ impl Menu {
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
-        draw_menu_items(canvas, self.selected, self.flicker, self.has_save, resources);
+    pub fn draw(
+        &mut self,
+        canvas: &mut RaylibTextureMode<RaylibHandle>,
+        resources: &ResourceManager,
+    ) {
+        draw_menu_items(
+            canvas,
+            self.selected,
+            self.flicker,
+            self.has_save,
+            resources,
+        );
     }
 
     pub fn is_transparent(&self) -> bool {
@@ -155,14 +199,7 @@ fn draw_menu_items(
     if let Some(tex) = resources.get_texture(&SpriteID::MenuBackground) {
         let source = Rectangle::new(0.0, 0.0, tex.width() as f32, tex.height() as f32);
         let dest = Rectangle::new(0.0, 0.0, GAME_WIDTH as f32, GAME_HEIGHT as f32);
-        canvas.draw_texture_pro(
-            tex,
-            source,
-            dest,
-            Vector2::new(0.0, 0.0),
-            0.0,
-            Color::WHITE,
-        );
+        canvas.draw_texture_pro(tex, source, dest, Vector2::new(0.0, 0.0), 0.0, Color::WHITE);
     }
 
     let start_y = 440;

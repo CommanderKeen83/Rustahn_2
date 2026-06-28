@@ -1,8 +1,8 @@
-use sola_raylib::prelude::*;
 use crate::prelude::*;
+use sola_raylib::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StateTag{
+pub enum StateTag {
     Menu,
     GameIntro,
     Game,
@@ -10,7 +10,7 @@ pub enum StateTag{
     Options,
 }
 
-pub enum State{
+pub enum State {
     Menu(screens::Menu),
     GameIntro(screens::GameIntro),
     Game(Box<screens::Game>), // because it could be massive
@@ -18,54 +18,74 @@ pub enum State{
     Options(screens::Options),
 }
 
-impl State{
+impl State {
     // builder functions
-    fn menu() -> Self{ Self::Menu(screens::Menu::new() )}
-    fn gameintro() -> Self{ Self::GameIntro(screens::GameIntro::new() )}
-    fn game() -> Self{ Self::Game(Box::new(screens::Game{} ))}
-    fn pause() -> Self{ Self::Pause(screens::Pause{} )}
-    fn options() -> Self{ Self::Options(screens::Options{} )}
+    fn menu() -> Self {
+        Self::Menu(screens::Menu::new())
+    }
+    fn gameintro() -> Self {
+        Self::GameIntro(screens::GameIntro::new())
+    }
+    fn game() -> Self {
+        Self::Game(Box::new(screens::Game {}))
+    }
+    fn pause() -> Self {
+        Self::Pause(screens::Pause {})
+    }
+    fn options() -> Self {
+        Self::Options(screens::Options {})
+    }
 
     // all screens must implement these functions
-    pub fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager){
-        match self{
+    pub fn on_enter(
+        &mut self,
+        rl: &mut RaylibHandle,
+        thread: &RaylibThread,
+        resources: &mut ResourceManager,
+    ) {
+        match self {
             State::Menu(screen) => screen.on_enter(rl, thread, resources),
             State::GameIntro(screen) => screen.on_enter(rl, thread, resources),
             State::Game(screen) => screen.on_enter(rl, thread, resources),
             State::Pause(screen) => screen.on_enter(rl, thread, resources),
-            State::Options(screen) => screen.on_enter(rl, thread, resources)
+            State::Options(screen) => screen.on_enter(rl, thread, resources),
         }
     }
-    pub fn on_activate(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager){
-        match self{
+    pub fn on_activate(
+        &mut self,
+        rl: &mut RaylibHandle,
+        thread: &RaylibThread,
+        resources: &mut ResourceManager,
+    ) {
+        match self {
             State::Menu(screen) => screen.on_activate(rl, thread, resources),
             State::GameIntro(screen) => screen.on_activate(rl, thread, resources),
             State::Game(screen) => screen.on_activate(rl, thread, resources),
             State::Pause(screen) => screen.on_activate(rl, thread, resources),
-            State::Options(screen) => screen.on_activate(rl, thread, resources)
+            State::Options(screen) => screen.on_activate(rl, thread, resources),
         }
     }
-    pub fn on_deactivate(&mut self){
-        match self{
+    pub fn on_deactivate(&mut self) {
+        match self {
             State::Menu(screen) => screen.on_deactivate(),
             State::GameIntro(screen) => screen.on_deactivate(),
             State::Game(screen) => screen.on_deactivate(),
             State::Pause(screen) => screen.on_deactivate(),
-            State::Options(screen) => screen.on_deactivate()
+            State::Options(screen) => screen.on_deactivate(),
         }
     }
-    pub fn on_exit(&mut self){
-        match self{
+    pub fn on_exit(&mut self) {
+        match self {
             State::Menu(screen) => screen.on_exit(),
             State::GameIntro(screen) => screen.on_exit(),
             State::Game(screen) => screen.on_exit(),
             State::Pause(screen) => screen.on_exit(),
-            State::Options(screen) => screen.on_exit()
+            State::Options(screen) => screen.on_exit(),
         }
     }
 
-    pub fn from_tag(tag: StateTag)->Self{
-        match tag{
+    pub fn from_tag(tag: StateTag) -> Self {
+        match tag {
             StateTag::Menu => Self::menu(),
             StateTag::GameIntro => Self::gameintro(),
             StateTag::Game => Self::game(),
@@ -74,8 +94,8 @@ impl State{
         }
     }
 
-    pub fn tag(&self) -> StateTag{
-        match self{
+    pub fn tag(&self) -> StateTag {
+        match self {
             State::Menu(_) => StateTag::Menu,
             State::GameIntro(_) => StateTag::GameIntro,
             State::Game(_) => StateTag::Game,
@@ -84,22 +104,32 @@ impl State{
         }
     }
 
-    pub fn update(&mut self, rl: &RaylibHandle, dt: f32, has_save: bool) -> Option<Transition> {
+    pub fn update(
+        &mut self,
+        rl: &RaylibHandle,
+        dt: f32,
+        has_save: bool,
+        audio: &mut AudioManager<'_, '_>,
+    ) -> Option<Transition> {
         match self {
-            State::Menu(screen) => screen.update(rl, dt, has_save),
-            State::GameIntro(screen) => screen.update(rl, dt),
-            State::Game(screen) => screen.update(rl, dt),
-            State::Pause(screen) => screen.update(rl, dt),
-            State::Options(screen) => screen.update(rl, dt),
+            State::Menu(screen) => screen.update(rl, dt, has_save, audio),
+            State::GameIntro(screen) => screen.update(rl, dt, audio),
+            State::Game(screen) => screen.update(rl, dt, audio),
+            State::Pause(screen) => screen.update(rl, dt, audio),
+            State::Options(screen) => screen.update(rl, dt, audio),
         }
     }
-    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager){
-        match self{
+    pub fn draw(
+        &mut self,
+        canvas: &mut RaylibTextureMode<RaylibHandle>,
+        resources: &ResourceManager,
+    ) {
+        match self {
             State::Menu(screen) => screen.draw(canvas, resources),
             State::GameIntro(screen) => screen.draw(canvas, resources),
             State::Game(screen) => screen.draw(canvas, resources),
             State::Pause(screen) => screen.draw(canvas, resources),
-            State::Options(screen) => screen.draw(canvas, resources)
+            State::Options(screen) => screen.draw(canvas, resources),
         }
     }
 
@@ -134,15 +164,15 @@ impl State{
     }
 }
 
-pub enum Transition{
-    None, 
-    Push(State), // Push a State on Top of the Stack
-    Switch(StateTag), // Reuse existing or push fresh
-    Pop, // remove state on Top of The Stack
-    Swap(State), // pop current, push new
-    ClearAndPush(State), // pop all, push new
-    Remove(StateTag), // remove a state from anywhere in the stack
-    Clear, // pop all states
+pub enum Transition {
+    None,
+    Push(State),               // Push a State on Top of the Stack
+    Switch(StateTag),          // Reuse existing or push fresh
+    Pop,                       // remove state on Top of The Stack
+    Swap(State),               // pop current, push new
+    ClearAndPush(State),       // pop all, push new
+    Remove(StateTag),          // remove a state from anywhere in the stack
+    Clear,                     // pop all states
     Multiple(Vec<Transition>), // apply multiple transitions in sequence
 }
 
@@ -152,15 +182,15 @@ pub struct StackEntry {
     pub has_activated: bool,
 }
 
-pub struct StateManager{
+pub struct StateManager {
     stack: Vec<StackEntry>,
     transitions: Vec<Transition>,
 }
 
-impl StateManager{
+impl StateManager {
     pub fn new(tag: StateTag) -> Self {
         let state = State::from_tag(tag);
-        Self{
+        Self {
             stack: vec![StackEntry {
                 state,
                 has_entered: false,
@@ -178,7 +208,7 @@ impl StateManager{
         self.stack.iter().any(|s| s.state.tag() == tag)
     }
 
-    pub fn update(&mut self, rl: &RaylibHandle, dt: f32) {
+    pub fn update(&mut self, rl: &RaylibHandle, dt: f32, audio: &mut AudioManager<'_, '_>) {
         if self.stack.is_empty() {
             return;
         }
@@ -195,7 +225,7 @@ impl StateManager{
 
         let mut transitions = Vec::new();
         for entry in &mut self.stack[start_idx..] {
-            if let Some(t) = entry.state.update(rl, dt, has_save) {
+            if let Some(t) = entry.state.update(rl, dt, has_save, audio) {
                 transitions.push(t);
             }
         }
@@ -356,7 +386,12 @@ impl StateManager{
         }
     }
 
-    pub fn apply_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+    pub fn apply_lifecycles(
+        &mut self,
+        rl: &mut RaylibHandle,
+        thread: &RaylibThread,
+        resources: &mut ResourceManager,
+    ) {
         // 1. Enter any unentered states
         for entry in &mut self.stack {
             if !entry.has_entered {
@@ -374,7 +409,11 @@ impl StateManager{
         }
     }
 
-    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
+    pub fn draw(
+        &mut self,
+        canvas: &mut RaylibTextureMode<RaylibHandle>,
+        resources: &ResourceManager,
+    ) {
         if self.stack.is_empty() {
             return;
         }
@@ -392,7 +431,6 @@ impl StateManager{
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -416,7 +454,7 @@ mod tests {
         let mut manager = StateManager::new(StateTag::Menu);
         manager.switch(StateTag::Game);
         manager.switch(StateTag::Pause);
-        
+
         // Stack should be [Menu, Game, Pause]
         assert_eq!(manager.stack.len(), 3);
         assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
@@ -425,7 +463,7 @@ mod tests {
 
         // Switch to Game (which already exists at index 1)
         manager.switch(StateTag::Game);
-        
+
         // Stack should now be [Menu, Pause, Game]
         assert_eq!(manager.stack.len(), 3);
         assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
@@ -437,7 +475,7 @@ mod tests {
     fn test_switch_existing_state_top() {
         let mut manager = StateManager::new(StateTag::Menu);
         manager.switch(StateTag::Game);
-        
+
         // Stack should be [Menu, Game]
         assert_eq!(manager.stack.len(), 2);
         assert_eq!(manager.stack[0].state.tag(), StateTag::Menu);
