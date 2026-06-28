@@ -9,6 +9,7 @@ pub struct Window{
     thread: RaylibThread,
     source_rec: Rectangle,
     dest_rec: Rectangle,
+    dest_rec_4_3: Rectangle,
     target: RenderTexture2D, // everything gets drawn to this virtual Canvas (1280x720). It gets scaled to the size of the window (GAME_WIDTH, GAME_HEIGHT).
     rl: RaylibHandle, // Drops happen from top to bottom, so RaylibHandle must always be dropped last, otherwise the lost Raylib Context will cause segfaults!
 }
@@ -20,6 +21,10 @@ pub fn init() -> Self {
         .title("Rabahn")
         .undecorated()
         .build();
+
+    let target = rl
+        .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)
+        .expect("could not create target in main.rs");
 
     #[cfg(not(target_os = "macos"))]
     let (screen_w, screen_h) = {
@@ -55,11 +60,17 @@ pub fn init() -> Self {
         game_h * scale,
     );
 
-    let target = rl
-        .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)
-        .expect("could not create target in main.rs");
+    let scale_4_3 = (screen_w / 4.0).min(screen_h / 3.0);
+    let dest_w_4_3 = 4.0 * scale_4_3;
+    let dest_h_4_3 = 3.0 * scale_4_3;
+    let dest_rec_4_3 = Rectangle::new(
+        (screen_w - dest_w_4_3) * 0.5,
+        (screen_h - dest_h_4_3) * 0.5,
+        dest_w_4_3,
+        dest_h_4_3,
+    );
 
-        Self { rl, thread, source_rec, dest_rec, target }
+        Self { rl, thread, source_rec, dest_rec, dest_rec_4_3, target }
 
     } // end of Window::init()
     pub fn should_close(&self) -> bool{
@@ -93,7 +104,8 @@ pub fn init() -> Self {
         draw_fn(&mut d_texture);
     }
 
-    pub fn draw_to_screen(&mut self, shader: Option<&mut Shader>) {
+    pub fn draw_to_screen(&mut self, shader: Option<&mut Shader>, use_4_3: bool) {
+        let dest = if use_4_3 { self.dest_rec_4_3 } else { self.dest_rec };
         let mut d = self.rl.begin_drawing(&self.thread);
         d.clear_background(Color::BLACK);
         if let Some(sh) = shader {
@@ -101,7 +113,7 @@ pub fn init() -> Self {
             shader_mode.draw_texture_pro(
                 &self.target,
                 self.source_rec,
-                self.dest_rec,
+                dest,
                 Vector2::new(0.0, 0.0),
                 0.0,
                 Color::WHITE,
@@ -110,7 +122,7 @@ pub fn init() -> Self {
             d.draw_texture_pro(
                 &self.target,
                 self.source_rec,
-                self.dest_rec,
+                dest,
                 Vector2::new(0.0, 0.0),
                 0.0,
                 Color::WHITE,

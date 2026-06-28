@@ -5,3 +5,12 @@ edition = "2024"
 
 [dependencies]
 sola-raylib = "6.0"
+
+# Force sola-raylib-sys to compile the C raylib dependency in Debug mode.
+# In Release mode, compiler optimizations trigger an OpenGL spec violation 
+# on Intel/Mesa graphics drivers (passing unsized GL_DEPTH_COMPONENT to 
+# glRenderbufferStorage), causing the FBO target to fail with incomplete 
+# attachment, resulting in a black screen.
+[profile.release]
+opt-level = 3
+debug-assertions = true

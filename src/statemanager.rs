@@ -320,6 +320,17 @@ impl StateManager{
         }
     }
 
+    pub fn current_state_uses_4_3(&self) -> bool {
+        if let Some(top) = self.stack.last() {
+            match top.state.tag() {
+                StateTag::Menu | StateTag::GameIntro => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     pub fn late_update(&mut self) {
         let pending: Vec<Transition> = self.transitions.drain(..).collect();
         for transition in pending {
