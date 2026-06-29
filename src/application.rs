@@ -5,9 +5,9 @@ use std::collections::HashMap;
 #[allow(dead_code)]
 pub struct Application<'aud> {
     resource_manager: ResourceManager, // must drop before window, since window holds Raylib context, otherwise SEGFAULT
-    statemanager: StateManager, // must drop before window to unload shaders safely, otherwise SEGFAULT
+    statemanager: StateManager,        // must drop before window to unload shaders safely, otherwise SEGFAULT
     gamestate: Gamestate,
-    music_tracks: HashMap<MusicID, Music<'aud>>, // must drop before window
+    music_tracks: HashMap<MusicID, Music<'aud>>,  // must drop before window
     sound_effects: HashMap<SoundID, Sound<'aud>>, // must drop before window
     current_music: Option<MusicID>,
     window: Window,
@@ -23,10 +23,7 @@ impl<'aud> Application<'aud> {
 
         let music_paths = [
             (MusicID::MainMenuTheme, "resources/music/menuscreen2.wav"),
-            (
-                MusicID::GameIntroScreen,
-                "resources/music/gameintroscreen2.wav",
-            ),
+            (MusicID::GameIntroScreen, "resources/music/gameintroscreen2.wav"),
             (MusicID::Level1_Theme, "resources/music/level1_theme.wav"),
         ];
 
@@ -47,18 +44,9 @@ impl<'aud> Application<'aud> {
 
         let sfx_paths = [
             (SoundID::FireballShot, "resources/audio/fireball_shot.wav"),
-            (
-                SoundID::Fireball_hit_Gobbler,
-                "resources/audio/fireball_hit_gobbler.wav",
-            ),
-            (
-                SoundID::Fireball_hit_Wall,
-                "resources/audio/fireball_hit_wall.wav",
-            ),
-            (
-                SoundID::Gobbler_Collision,
-                "resources/audio/gobbler_collision.wav",
-            ),
+            (SoundID::Fireball_hit_Gobbler, "resources/audio/fireball_hit_gobbler.wav"),
+            (SoundID::Fireball_hit_Wall, "resources/audio/fireball_hit_wall.wav"),
+            (SoundID::Gobbler_Collision, "resources/audio/gobbler_collision.wav"),
             (SoundID::MenuSelect, "resources/audio/menuselect.wav"),
         ];
 
@@ -100,19 +88,13 @@ impl<'aud> Application<'aud> {
             }
         }
 
-        let mut audio = AudioManager::new(
-            &mut self.current_music,
-            &self.music_tracks,
-            &self.sound_effects,
-        );
+        let mut audio = AudioManager::new(&mut self.current_music, &self.music_tracks, &self.sound_effects);
 
-        self.statemanager
-            .update(self.window.rl(), delta_time, &mut audio);
+        self.statemanager.update(self.window.rl(), delta_time, &mut audio);
         self.statemanager.late_update();
 
         let (rl, thread) = self.window.get_handles();
-        self.statemanager
-            .apply_lifecycles(rl, thread, &mut self.resource_manager);
+        self.statemanager.apply_lifecycles(rl, thread, &mut self.resource_manager);
     }
 
     pub fn draw(&mut self) {
