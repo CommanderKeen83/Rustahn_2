@@ -35,3 +35,10 @@ Single crate (not a workspace). Binary (`main.rs`) + library (`lib.rs`).
   - **Menu and GameIntro screens** are drawn in a centered `4:3` bounding box (leaving left and right black borders) to simulate a retro CRT television feel.
   - **Game, Pause, and Options screens** are scaled to the full `16:9` resolution.
   - This aspect ratio selection is automatically queried from `StateManager::current_state_uses_4_3` and passed to `Window::draw_to_screen`.
+
+## Audio Management & Lifecycles
+
+- **Audio Device Context**: Owned by `main()` in `main.rs` as a `RaylibAudio` instance, outliving the application.
+- **Audio Resources**: `music_tracks: HashMap<MusicID, Music<'aud>>` and `sound_effects: HashMap<SoundID, Sound<'aud>>` are owned by `Application<'aud>`.
+- **`AudioManager` Controller**: A lightweight view-struct `AudioManager<'a, 'aud>` constructed on the fly each frame in `Application::update()` and passed to screen updates (`audio: &mut AudioManager<'_, '_>`). This avoids self-referential compiler constraints entirely.
+- **Drop Ordering Safety**: In `Application<'aud>`, the resource maps (`music_tracks`, `sound_effects`) must be declared *before* the `window` field. This ensures that all audio assets are dropped and unloaded (calling `UnloadMusicStream` and `UnloadSound` in C) *before* the window's Raylib context is dropped, preventing memory access violations/segfaults on shutdown.
