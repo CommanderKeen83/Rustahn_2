@@ -1,12 +1,11 @@
-pub mod gameintro;
-pub mod game;
-pub mod menu;
-pub mod pause;
-pub mod option;
+mod game;
+mod gameintro;
+mod menu;
+mod option;
+mod pause;
 
-pub use gameintro::GameIntro;
 pub use game::Game;
+pub use gameintro::GameIntro;
 pub use menu::Menu;
-pub use pause::Pause;
 pub use option::Options;
-
+pub use pause::Pause;
