@@ -57,38 +57,21 @@ impl State {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct StateSet(u8);
-
-impl StateSet {
-    pub fn contains(&self, tag: StateTag) -> bool {
-        (self.0 & (1 << (tag as u8))) != 0
-    }
-
-    pub fn insert(&mut self, tag: StateTag) {
-        self.0 |= 1 << (tag as u8);
-    }
-}
-
 pub struct UpdateContext<'a> {
     pub rl: &'a RaylibHandle,
     pub dt: f32,
     pub audio: AudioManager<'a, 'a>,
-    active_states: StateSet,
+    tags: &'a [StateTag],
 }
 
 impl<'a> UpdateContext<'a> {
-    pub fn new(rl: &'a RaylibHandle, dt: f32, audio: AudioManager<'a, 'a>, active_states: StateSet) -> Self {
-        Self {
-            rl,
-            dt,
-            audio,
-            active_states,
-        }
+    pub fn new(rl: &'a RaylibHandle, dt: f32, audio: AudioManager<'a, 'a>, tags: &'a [StateTag]) -> Self {
+        Self { rl, dt, audio, tags }
     }
 
+    #[inline]
     pub fn has_state(&self, tag: StateTag) -> bool {
-        self.active_states.contains(tag)
+        self.tags.contains(&tag)
     }
 }
 
@@ -194,6 +177,20 @@ pub struct StackEntry {
 }
 
 impl StackEntry {
+    pub fn enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        if !self.has_entered {
+            self.state.on_enter(rl, thread, resources);
+            self.has_entered = true;
+        }
+    }
+
+    pub fn activate(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        if !self.has_activated {
+            self.state.on_activate(rl, thread, resources);
+            self.has_activated = true;
+        }
+    }
+
     pub fn deactivate(&mut self) {
         if self.has_activated {
             self.state.on_deactivate();
@@ -211,6 +208,7 @@ impl StackEntry {
 
 pub struct StateManager {
     stack: Vec<StackEntry>,
+    tags: Vec<StateTag>,
     transitions: Vec<Transition>,
 }
 
@@ -223,6 +221,7 @@ impl StateManager {
                 has_entered: false,
                 has_activated: false,
             }],
+            tags: vec![tag],
             transitions: vec![],
         }
     }
@@ -231,16 +230,9 @@ impl StateManager {
         self.stack.is_empty()
     }
 
+    #[inline]
     pub fn has_state(&self, tag: StateTag) -> bool {
-        self.stack.iter().any(|s| s.state.tag() == tag)
-    }
-
-    pub fn active_states(&self) -> StateSet {
-        let mut set = StateSet::default();
-        for entry in &self.stack {
-            set.insert(entry.state.tag());
-        }
-        set
+        self.tags.contains(&tag)
     }
 
     pub fn update(&mut self, rl: &RaylibHandle, dt: f32, audio: &mut AudioManager<'_, '_>) {
@@ -256,7 +248,8 @@ impl StateManager {
             start_idx -= 1;
         }
 
-        let mut ctx = UpdateContext::new(rl, dt, audio.reborrow(), self.active_states());
+        let tags = &self.tags;
+        let mut ctx = UpdateContext::new(rl, dt, audio.reborrow(), tags);
 
         let mut transitions = Vec::new();
         for entry in &mut self.stack[start_idx..] {
@@ -277,6 +270,7 @@ impl StateManager {
         if let Some(top) = self.stack.last_mut() {
             top.deactivate();
         }
+        self.tags.push(state.tag());
         self.stack.push(StackEntry {
             state,
             has_entered: false,
@@ -285,12 +279,15 @@ impl StateManager {
     }
 
     pub fn pop(&mut self) {
+        self.tags.pop();
         if let Some(top) = self.stack.pop() {
             top.exit();
         }
     }
 
     pub fn swap(&mut self, state: State) {
+        self.tags.pop();
+        self.tags.push(state.tag());
         if let Some(top) = self.stack.pop() {
             top.exit();
         }
@@ -303,11 +300,7 @@ impl StateManager {
 
     pub fn clear_and_push(&mut self, state: State) {
         self.clear();
-        self.stack.push(StackEntry {
-            state,
-            has_entered: false,
-            has_activated: false,
-        });
+        self.push(state);
     }
 
     pub fn switch(&mut self, tag: StateTag) {
@@ -319,12 +312,15 @@ impl StateManager {
                 }
                 let existing_state = self.stack.remove(pos);
                 self.stack.push(existing_state);
+                self.tags.remove(pos);
+                self.tags.push(tag);
             }
         } else {
             if let Some(top) = self.stack.last_mut() {
                 top.deactivate();
             }
             let state = State::from_tag(tag);
+            self.tags.push(tag);
             self.stack.push(StackEntry {
                 state,
                 has_entered: false,
@@ -336,12 +332,14 @@ impl StateManager {
     pub fn remove(&mut self, tag: StateTag) {
         let position = self.stack.iter().position(|s| s.state.tag() == tag);
         if let Some(pos) = position {
+            self.tags.remove(pos);
             let entry = self.stack.remove(pos);
             entry.exit();
         }
     }
 
     pub fn clear(&mut self) {
+        self.tags.clear();
         while let Some(top) = self.stack.pop() {
             top.exit();
         }
@@ -384,20 +382,24 @@ impl StateManager {
     }
 
     pub fn apply_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
-        // 1. Enter any unentered states
-        for entry in &mut self.stack {
-            if !entry.has_entered {
-                entry.state.on_enter(rl, thread, resources);
-                entry.has_entered = true;
-            }
+        let len = self.stack.len();
+        if len == 0 {
+            return;
         }
 
-        // 2. Activate the top state if not already active
+        // 1. Enter any unentered states
+        for entry in &mut self.stack {
+            entry.enter(rl, thread, resources);
+        }
+
+        // 2. Ensure all states below the top are deactivated
+        for entry in &mut self.stack[..len - 1] {
+            entry.deactivate();
+        }
+
+        // 3. Ensure the top state is activated
         if let Some(top) = self.stack.last_mut() {
-            if !top.has_activated {
-                top.state.on_activate(rl, thread, resources);
-                top.has_activated = true;
-            }
+            top.activate(rl, thread, resources);
         }
     }
 
