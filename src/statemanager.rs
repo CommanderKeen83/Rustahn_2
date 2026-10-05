@@ -27,13 +27,13 @@ impl State {
         Self::GameIntro(screens::GameIntro::new())
     }
     fn game() -> Self {
-        Self::Game(Box::new(screens::Game {}))
+        Self::Game(Box::new(screens::Game::new()))
     }
     fn pause() -> Self {
-        Self::Pause(screens::Pause {})
+        Self::Pause(screens::Pause::new())
     }
     fn options() -> Self {
-        Self::Options(screens::Options {})
+        Self::Options(screens::Options::new())
     }
 
     pub fn from_tag(tag: StateTag) -> Self {

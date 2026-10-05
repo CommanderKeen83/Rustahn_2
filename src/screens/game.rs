@@ -3,6 +3,12 @@ use sola_raylib::prelude::*;
 
 pub struct Game {}
 
+impl Game {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl Screen for Game {
     fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager) {
         canvas.draw_triangle(
