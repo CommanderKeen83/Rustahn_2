@@ -36,54 +36,6 @@ impl State {
         Self::Options(screens::Options {})
     }
 
-    // all screens must implement these functions
-    pub fn on_enter(
-        &mut self,
-        rl: &mut RaylibHandle,
-        thread: &RaylibThread,
-        resources: &mut ResourceManager,
-    ) {
-        match self {
-            State::Menu(screen) => screen.on_enter(rl, thread, resources),
-            State::GameIntro(screen) => screen.on_enter(rl, thread, resources),
-            State::Game(screen) => screen.on_enter(rl, thread, resources),
-            State::Pause(screen) => screen.on_enter(rl, thread, resources),
-            State::Options(screen) => screen.on_enter(rl, thread, resources),
-        }
-    }
-    pub fn on_activate(
-        &mut self,
-        rl: &mut RaylibHandle,
-        thread: &RaylibThread,
-        resources: &mut ResourceManager,
-    ) {
-        match self {
-            State::Menu(screen) => screen.on_activate(rl, thread, resources),
-            State::GameIntro(screen) => screen.on_activate(rl, thread, resources),
-            State::Game(screen) => screen.on_activate(rl, thread, resources),
-            State::Pause(screen) => screen.on_activate(rl, thread, resources),
-            State::Options(screen) => screen.on_activate(rl, thread, resources),
-        }
-    }
-    pub fn on_deactivate(&mut self) {
-        match self {
-            State::Menu(screen) => screen.on_deactivate(),
-            State::GameIntro(screen) => screen.on_deactivate(),
-            State::Game(screen) => screen.on_deactivate(),
-            State::Pause(screen) => screen.on_deactivate(),
-            State::Options(screen) => screen.on_deactivate(),
-        }
-    }
-    pub fn on_exit(&mut self) {
-        match self {
-            State::Menu(screen) => screen.on_exit(),
-            State::GameIntro(screen) => screen.on_exit(),
-            State::Game(screen) => screen.on_exit(),
-            State::Pause(screen) => screen.on_exit(),
-            State::Options(screen) => screen.on_exit(),
-        }
-    }
-
     pub fn from_tag(tag: StateTag) -> Self {
         match tag {
             StateTag::Menu => Self::menu(),
@@ -103,69 +55,128 @@ impl State {
             State::Options(_) => StateTag::Options,
         }
     }
+}
 
-    pub fn update(
-        &mut self,
-        rl: &RaylibHandle,
-        dt: f32,
-        has_save: bool,
-        audio: &mut AudioManager<'_, '_>,
-    ) -> Option<Transition> {
-        match self {
-            State::Menu(screen) => screen.update(rl, dt, has_save, audio),
-            State::GameIntro(screen) => screen.update(rl, dt, audio),
-            State::Game(screen) => screen.update(rl, dt, audio),
-            State::Pause(screen) => screen.update(rl, dt, audio),
-            State::Options(screen) => screen.update(rl, dt, audio),
-        }
-    }
-    pub fn draw(
-        &mut self,
-        canvas: &mut RaylibTextureMode<RaylibHandle>,
-        resources: &ResourceManager,
-    ) {
-        match self {
-            State::Menu(screen) => screen.draw(canvas, resources),
-            State::GameIntro(screen) => screen.draw(canvas, resources),
-            State::Game(screen) => screen.draw(canvas, resources),
-            State::Pause(screen) => screen.draw(canvas, resources),
-            State::Options(screen) => screen.draw(canvas, resources),
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StateSet(u8);
+
+impl StateSet {
+    pub fn contains(&self, tag: StateTag) -> bool {
+        (self.0 & (1 << (tag as u8))) != 0
     }
 
-    pub fn is_transparent(&self) -> bool {
-        match self {
-            State::Menu(screen) => screen.is_transparent(),
-            State::GameIntro(screen) => screen.is_transparent(),
-            State::Game(screen) => screen.is_transparent(),
-            State::Pause(screen) => screen.is_transparent(),
-            State::Options(screen) => screen.is_transparent(),
+    pub fn insert(&mut self, tag: StateTag) {
+        self.0 |= 1 << (tag as u8);
+    }
+}
+
+pub struct UpdateContext<'a> {
+    pub rl: &'a RaylibHandle,
+    pub dt: f32,
+    pub audio: AudioManager<'a, 'a>,
+    active_states: StateSet,
+}
+
+impl<'a> UpdateContext<'a> {
+    pub fn new(rl: &'a RaylibHandle, dt: f32, audio: AudioManager<'a, 'a>, active_states: StateSet) -> Self {
+        Self {
+            rl,
+            dt,
+            audio,
+            active_states,
         }
     }
 
-    pub fn is_transcendent(&self) -> bool {
-        match self {
-            State::Menu(screen) => screen.is_transcendent(),
-            State::GameIntro(screen) => screen.is_transcendent(),
-            State::Game(screen) => screen.is_transcendent(),
-            State::Pause(screen) => screen.is_transcendent(),
-            State::Options(screen) => screen.is_transcendent(),
-        }
+    pub fn has_state(&self, tag: StateTag) -> bool {
+        self.active_states.contains(tag)
+    }
+}
+
+pub type Context<'a> = UpdateContext<'a>;
+
+pub trait Screen {
+    fn on_enter(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
+    fn on_activate(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
+    fn on_deactivate(&mut self) {}
+    fn on_exit(&mut self) {}
+
+    fn update(&mut self, _ctx: &mut Context) -> Option<Transition> {
+        None
+    }
+    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager);
+
+    fn is_transparent(&self) -> bool {
+        false
     }
 
-    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
-        match self {
-            State::Menu(screen) => screen.get_post_process_shader(),
-            State::GameIntro(screen) => screen.get_post_process_shader(),
-            State::Game(screen) => screen.get_post_process_shader(),
-            State::Pause(screen) => screen.get_post_process_shader(),
-            State::Options(screen) => screen.get_post_process_shader(),
+    fn is_transcendent(&self) -> bool {
+        false
+    }
+
+    fn wants_4_3(&self) -> bool {
+        false
+    }
+
+    fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
+        None
+    }
+}
+
+macro_rules! delegate_screen {
+    ($self:expr, $screen:ident => $expr:expr) => {
+        match $self {
+            State::Menu($screen) => $expr,
+            State::GameIntro($screen) => $expr,
+            State::Game($screen) => $expr,
+            State::Pause($screen) => $expr,
+            State::Options($screen) => $expr,
         }
+    };
+}
+
+impl Screen for State {
+    fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        delegate_screen!(self, s => s.on_enter(rl, thread, resources));
+    }
+
+    fn on_activate(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        delegate_screen!(self, s => s.on_activate(rl, thread, resources));
+    }
+
+    fn on_deactivate(&mut self) {
+        delegate_screen!(self, s => s.on_deactivate());
+    }
+
+    fn on_exit(&mut self) {
+        delegate_screen!(self, s => s.on_exit());
+    }
+
+    fn update(&mut self, ctx: &mut Context) -> Option<Transition> {
+        delegate_screen!(self, s => s.update(ctx))
+    }
+
+    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
+        delegate_screen!(self, s => s.draw(canvas, resources));
+    }
+
+    fn is_transparent(&self) -> bool {
+        delegate_screen!(self, s => s.is_transparent())
+    }
+
+    fn is_transcendent(&self) -> bool {
+        delegate_screen!(self, s => s.is_transcendent())
+    }
+
+    fn wants_4_3(&self) -> bool {
+        delegate_screen!(self, s => s.wants_4_3())
+    }
+
+    fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
+        delegate_screen!(self, s => s.get_post_process_shader())
     }
 }
 
 pub enum Transition {
-    None,
     Push(State),               // Push a State on Top of the Stack
     Switch(StateTag),          // Reuse existing or push fresh
     Pop,                       // remove state on Top of The Stack
@@ -180,6 +191,22 @@ pub struct StackEntry {
     pub state: State,
     pub has_entered: bool,
     pub has_activated: bool,
+}
+
+impl StackEntry {
+    pub fn deactivate(&mut self) {
+        if self.has_activated {
+            self.state.on_deactivate();
+            self.has_activated = false;
+        }
+    }
+
+    pub fn exit(mut self) {
+        self.deactivate();
+        if self.has_entered {
+            self.state.on_exit();
+        }
+    }
 }
 
 pub struct StateManager {
@@ -208,12 +235,18 @@ impl StateManager {
         self.stack.iter().any(|s| s.state.tag() == tag)
     }
 
+    pub fn active_states(&self) -> StateSet {
+        let mut set = StateSet::default();
+        for entry in &self.stack {
+            set.insert(entry.state.tag());
+        }
+        set
+    }
+
     pub fn update(&mut self, rl: &RaylibHandle, dt: f32, audio: &mut AudioManager<'_, '_>) {
         if self.stack.is_empty() {
             return;
         }
-
-        let has_save = self.has_state(StateTag::Game);
 
         let mut start_idx = self.stack.len() - 1;
         while start_idx > 0 {
@@ -223,9 +256,11 @@ impl StateManager {
             start_idx -= 1;
         }
 
+        let mut ctx = UpdateContext::new(rl, dt, audio.reborrow(), self.active_states());
+
         let mut transitions = Vec::new();
         for entry in &mut self.stack[start_idx..] {
-            if let Some(t) = entry.state.update(rl, dt, has_save, audio) {
+            if let Some(t) = entry.state.update(&mut ctx) {
                 transitions.push(t);
             }
         }
@@ -235,16 +270,12 @@ impl StateManager {
     }
 
     pub fn add_transition(&mut self, transition: Transition) {
-        match transition {
-            Transition::None => {}
-            _ => self.transitions.push(transition),
-        }
+        self.transitions.push(transition);
     }
 
     pub fn push(&mut self, state: State) {
         if let Some(top) = self.stack.last_mut() {
-            top.state.on_deactivate();
-            top.has_activated = false;
+            top.deactivate();
         }
         self.stack.push(StackEntry {
             state,
@@ -254,19 +285,14 @@ impl StateManager {
     }
 
     pub fn pop(&mut self) {
-        if let Some(mut top) = self.stack.pop() {
-            top.state.on_deactivate();
-            top.state.on_exit();
-        }
-        if let Some(new_top) = self.stack.last_mut() {
-            new_top.has_activated = false;
+        if let Some(top) = self.stack.pop() {
+            top.exit();
         }
     }
 
     pub fn swap(&mut self, state: State) {
-        if let Some(mut top) = self.stack.pop() {
-            top.state.on_deactivate();
-            top.state.on_exit();
+        if let Some(top) = self.stack.pop() {
+            top.exit();
         }
         self.stack.push(StackEntry {
             state,
@@ -276,10 +302,7 @@ impl StateManager {
     }
 
     pub fn clear_and_push(&mut self, state: State) {
-        while let Some(mut top) = self.stack.pop() {
-            top.state.on_deactivate();
-            top.state.on_exit();
-        }
+        self.clear();
         self.stack.push(StackEntry {
             state,
             has_entered: false,
@@ -292,17 +315,14 @@ impl StateManager {
         if let Some(pos) = position {
             if pos < self.stack.len() - 1 {
                 if let Some(top) = self.stack.last_mut() {
-                    top.state.on_deactivate();
-                    top.has_activated = false;
+                    top.deactivate();
                 }
-                let mut existing_state = self.stack.remove(pos);
-                existing_state.has_activated = false;
+                let existing_state = self.stack.remove(pos);
                 self.stack.push(existing_state);
             }
         } else {
             if let Some(top) = self.stack.last_mut() {
-                top.state.on_deactivate();
-                top.has_activated = false;
+                top.deactivate();
             }
             let state = State::from_tag(tag);
             self.stack.push(StackEntry {
@@ -316,29 +336,14 @@ impl StateManager {
     pub fn remove(&mut self, tag: StateTag) {
         let position = self.stack.iter().position(|s| s.state.tag() == tag);
         if let Some(pos) = position {
-            let mut entry = self.stack.remove(pos);
-            entry.state.on_deactivate();
-            entry.state.on_exit();
-            if pos == self.stack.len() {
-                if let Some(new_top) = self.stack.last_mut() {
-                    new_top.has_activated = false;
-                }
-            }
+            let entry = self.stack.remove(pos);
+            entry.exit();
         }
     }
 
     pub fn clear(&mut self) {
-        while let Some(mut top) = self.stack.pop() {
-            top.state.on_deactivate();
-            top.state.on_exit();
-        }
-    }
-
-    pub fn init_resources(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        for entry in &mut self.stack {
-            if let State::Menu(menu) = &mut entry.state {
-                menu.init_shader(rl, thread);
-            }
+        while let Some(top) = self.stack.pop() {
+            top.exit();
         }
     }
 
@@ -351,14 +356,7 @@ impl StateManager {
     }
 
     pub fn current_state_uses_4_3(&self) -> bool {
-        if let Some(top) = self.stack.last() {
-            match top.state.tag() {
-                StateTag::Menu | StateTag::GameIntro => true,
-                _ => false,
-            }
-        } else {
-            false
-        }
+        self.stack.last().map_or(false, |top| top.state.wants_4_3())
     }
 
     pub fn late_update(&mut self) {
@@ -370,7 +368,6 @@ impl StateManager {
 
     fn apply_transition(&mut self, transition: Transition) {
         match transition {
-            Transition::None => {}
             Transition::Push(state) => self.push(state),
             Transition::Switch(tag) => self.switch(tag),
             Transition::Pop => self.pop(),
@@ -386,12 +383,7 @@ impl StateManager {
         }
     }
 
-    pub fn apply_lifecycles(
-        &mut self,
-        rl: &mut RaylibHandle,
-        thread: &RaylibThread,
-        resources: &mut ResourceManager,
-    ) {
+    pub fn apply_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
         // 1. Enter any unentered states
         for entry in &mut self.stack {
             if !entry.has_entered {
@@ -409,11 +401,7 @@ impl StateManager {
         }
     }
 
-    pub fn draw(
-        &mut self,
-        canvas: &mut RaylibTextureMode<RaylibHandle>,
-        resources: &ResourceManager,
-    ) {
+    pub fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         if self.stack.is_empty() {
             return;
         }
@@ -518,5 +506,43 @@ mod tests {
         assert!(!game.is_transcendent());
         assert!(!pause.is_transcendent());
         assert!(!options.is_transcendent());
+    }
+
+    #[test]
+    fn test_screen_aspect_ratio() {
+        let menu = State::from_tag(StateTag::Menu);
+        let game_intro = State::from_tag(StateTag::GameIntro);
+        let game = State::from_tag(StateTag::Game);
+        let pause = State::from_tag(StateTag::Pause);
+        let options = State::from_tag(StateTag::Options);
+
+        assert!(menu.wants_4_3());
+        assert!(game_intro.wants_4_3());
+        assert!(!game.wants_4_3());
+        assert!(!pause.wants_4_3());
+        assert!(!options.wants_4_3());
+    }
+
+    #[test]
+    fn test_lifecycle_guards() {
+        let mut manager = StateManager::new(StateTag::Menu);
+        assert_eq!(manager.stack.len(), 1);
+        assert!(!manager.stack[0].has_entered);
+        assert!(!manager.stack[0].has_activated);
+
+        // Pushing without applying lifecycles must not deactivate the unactivated top
+        manager.push(State::from_tag(StateTag::Game));
+        assert_eq!(manager.stack.len(), 2);
+        assert!(!manager.stack[0].has_activated);
+        assert!(!manager.stack[1].has_entered);
+        assert!(!manager.stack[1].has_activated);
+
+        // Popping a state that never entered or activated must safely discard without panic
+        manager.pop();
+        assert_eq!(manager.stack.len(), 1);
+
+        // Clear on unentered states
+        manager.clear();
+        assert!(manager.is_empty());
     }
 }

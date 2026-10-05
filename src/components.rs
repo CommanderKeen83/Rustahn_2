@@ -1,13 +1,12 @@
-
 #[derive(Debug, Clone)]
-pub struct MovementData{
+pub struct MovementData {
     pub thrust_speed: f32,
     pub max_speed: f32,
     pub rotation_speed: f32,
 }
-impl MovementData{
-    pub fn new(thrust_speed: f32, max_speed: f32, rotation_speed: f32) -> Self{
-        MovementData{
+impl MovementData {
+    pub fn new(thrust_speed: f32, max_speed: f32, rotation_speed: f32) -> Self {
+        MovementData {
             thrust_speed,
             max_speed,
             rotation_speed,
@@ -48,41 +47,38 @@ impl Default for KnockbackData {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mortality{
+pub struct Mortality {
     pub lifetime: f32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum WeaponType{
+pub enum WeaponType {
     PlayerBullet,
     EnemyBullet,
     EnemyFireball,
     EnemyFreezeBeam,
-
 }
 #[derive(Debug, Clone)]
-pub struct WeaponSet{
+pub struct WeaponSet {
     pub cooldown: f32,
     pub timer: f32,
-    pub weapon: WeaponType
+    pub weapon: WeaponType,
 }
 
 #[derive(Debug, Clone)]
-pub struct PhysicsData{
+pub struct PhysicsData {}
 
-}
-
-pub mod fireball_stats{
+pub mod fireball_stats {
     pub const MAX_SPEED: f32 = 850.0;
     pub const LIFETIME: f32 = 2.0;
 }
 
-pub mod player_stats{
+pub mod player_stats {
     pub const MAX_SPEED: f32 = 12550.0;
     pub const ROTATION_SPEED: f32 = 200.0;
     pub const THRUST_POWER: f32 = 800.0;
 }
 
-pub mod world_stats{
+pub mod world_stats {
     pub const DRAG: f32 = 3.0;
 }

@@ -37,13 +37,10 @@ impl GameIntro {
             time_loc_crt: 0,
         }
     }
+}
 
-    pub fn on_enter(
-        &mut self,
-        rl: &mut RaylibHandle,
-        thread: &RaylibThread,
-        resources: &mut ResourceManager,
-    ) {
+impl Screen for GameIntro {
+    fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
         // self.passed_time = 0.0;
         // self.darkness = 1.0;
         // self.stormcloud_position = Vector2::new(-1650.0, -500.0);
@@ -67,12 +64,7 @@ impl GameIntro {
         }
 
         if std::path::Path::new("resources/graphics/windowlamp.png").exists() {
-            let _ = resources.load_texture(
-                rl,
-                thread,
-                SpriteID::GameIntroWindowLamp,
-                "resources/graphics/windowlamp.png",
-            );
+            let _ = resources.load_texture(rl, thread, SpriteID::GameIntroWindowLamp, "resources/graphics/windowlamp.png");
         }
 
         let flicker = rl.load_shader(thread, None, Some("src/shaders/flicker.fs"));
@@ -84,26 +76,9 @@ impl GameIntro {
         self.crt_shader = Some(crt);
     }
 
-    pub fn on_activate(
-        &mut self,
-        _rl: &mut RaylibHandle,
-        _thread: &RaylibThread,
-        _resources: &mut ResourceManager,
-    ) {
-    }
-
-    pub fn on_deactivate(&mut self) {}
-
-    pub fn on_exit(&mut self) {}
-
-    pub fn update(
-        &mut self,
-        rl: &RaylibHandle,
-        dt: f32,
-        audio: &mut AudioManager<'_, '_>,
-    ) -> Option<Transition> {
-        audio.play_music(MusicID::GameIntroScreen);
-        self.passed_time += dt;
+    fn update(&mut self, ctx: &mut Context) -> Option<Transition> {
+        ctx.audio.play_music(MusicID::GameIntroScreen);
+        self.passed_time += ctx.dt;
 
         if let Some(ref mut flicker) = self.flicker_shader {
             flicker.set_shader_value(self.time_loc_flicker, self.passed_time);
@@ -112,9 +87,9 @@ impl GameIntro {
             crt.set_shader_value(self.time_loc_crt, self.passed_time);
         }
 
-        if rl.is_key_pressed(KeyboardKey::KEY_ENTER)
-            || rl.is_key_pressed(KeyboardKey::KEY_SPACE)
-            || rl.is_key_pressed(KeyboardKey::KEY_ESCAPE)
+        if ctx.rl.is_key_pressed(KeyboardKey::KEY_ENTER)
+            || ctx.rl.is_key_pressed(KeyboardKey::KEY_SPACE)
+            || ctx.rl.is_key_pressed(KeyboardKey::KEY_ESCAPE)
         {
             return Some(Transition::Multiple(vec![
                 Transition::Remove(StateTag::GameIntro),
@@ -123,20 +98,16 @@ impl GameIntro {
         }
 
         if self.passed_time > 20.0 {
-            self.darkness = f32::max(0.353, self.darkness - (self.fade_speed * dt));
+            self.darkness = f32::max(0.353, self.darkness - (self.fade_speed * ctx.dt));
         }
         if self.stormcloud_position.x < -180.0 {
-            self.stormcloud_position.x += dt * 25.0;
+            self.stormcloud_position.x += ctx.dt * 25.0;
         }
 
         None
     }
 
-    pub fn draw(
-        &mut self,
-        canvas: &mut RaylibTextureMode<RaylibHandle>,
-        resources: &ResourceManager,
-    ) {
+    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         let intensity = (self.darkness * 255.0) as u8;
         let tint = Color::new(intensity, intensity, intensity, 255);
 
@@ -173,9 +144,7 @@ impl GameIntro {
         if shader_ready {
             if let Some(ref mut flicker_shader) = self.flicker_shader {
                 let mut shader_mode = canvas.begin_shader_mode(flicker_shader);
-                if let Some(texture_windowlamp) =
-                    resources.get_texture(&SpriteID::GameIntroWindowLamp)
-                {
+                if let Some(texture_windowlamp) = resources.get_texture(&SpriteID::GameIntroWindowLamp) {
                     shader_mode.draw_texture_pro(
                         texture_windowlamp,
                         Rectangle::new(0.0, 0.0, 15.0, 10.0),
@@ -187,8 +156,7 @@ impl GameIntro {
                 }
             }
         } else {
-            if let Some(texture_windowlamp) = resources.get_texture(&SpriteID::GameIntroWindowLamp)
-            {
+            if let Some(texture_windowlamp) = resources.get_texture(&SpriteID::GameIntroWindowLamp) {
                 canvas.draw_texture_pro(
                     texture_windowlamp,
                     Rectangle::new(0.0, 0.0, 15.0, 10.0),
@@ -214,25 +182,15 @@ impl GameIntro {
             let skip_color = Color::new(255, 210, 80, flicker_alpha);
             let skip_x = (50.0 / 800.0 * 1280.0) as i32;
             let skip_y = (500.0 / 600.0 * 720.0) as i32;
-            canvas.draw_text(
-                "press space or enter to continue",
-                skip_x,
-                skip_y,
-                text_size,
-                skip_color,
-            );
+            canvas.draw_text("press space or enter to continue", skip_x, skip_y, text_size, skip_color);
         }
     }
 
-    pub fn is_transparent(&self) -> bool {
-        false
+    fn wants_4_3(&self) -> bool {
+        true
     }
 
-    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
+    fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
         self.crt_shader.as_mut()
-    }
-
-    pub fn is_transcendent(&self) -> bool {
-        false
     }
 }

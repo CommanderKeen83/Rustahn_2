@@ -52,54 +52,41 @@ impl Menu {
         }
     }
 
-    pub fn on_enter(
-        &mut self,
-        rl: &mut RaylibHandle,
-        thread: &RaylibThread,
-        resources: &mut ResourceManager,
-    ) {
-        if let Err(e) = resources.load_texture(
-            rl,
-            thread,
-            SpriteID::MenuBackground,
-            "resources/graphics/main_menu.png",
-        ) {
-            eprintln!("Failed to load menu background: {}", e);
+    fn select_previous(&mut self) {
+        if self.selected > 0 {
+            self.selected -= 1;
         }
     }
-    pub fn on_activate(
-        &mut self,
-        _rl: &mut RaylibHandle,
-        _thread: &RaylibThread,
-        _resources: &mut ResourceManager,
-    ) {
-    }
-    pub fn on_deactivate(&mut self) {}
-    pub fn on_exit(&mut self) {}
 
-    pub fn init_shader(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+    fn select_next(&mut self) {
+        if self.selected < MENU_ITEMS.len() - 1 {
+            self.selected += 1;
+        }
+    }
+}
+
+impl Screen for Menu {
+    fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        if let Err(e) = resources.load_texture(rl, thread, SpriteID::MenuBackground, "resources/graphics/main_menu.png") {
+            eprintln!("Failed to load menu background: {}", e);
+        }
+
         let shader = rl.load_shader(thread, None, Some("src/shaders/crt_shader.fs"));
         self.time_loc = shader.get_shader_location("time");
         self.crt_shader = Some(shader);
     }
 
-    pub fn update(
-        &mut self,
-        rl: &RaylibHandle,
-        dt: f32,
-        has_save: bool,
-        audio: &mut AudioManager<'_, '_>,
-    ) -> Option<Transition> {
-        audio.play_music(MusicID::MainMenuTheme);
-        self.flicker += dt;
-        self.has_save = has_save;
+    fn update(&mut self, ctx: &mut Context) -> Option<Transition> {
+        ctx.audio.play_music(MusicID::MainMenuTheme);
+        self.flicker += ctx.dt;
+        self.has_save = ctx.has_state(StateTag::Game);
 
         if let Some(ref mut shader) = self.crt_shader {
             shader.set_shader_value(self.time_loc, self.flicker);
         }
 
-        if rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
-            audio.play_sfx(SoundID::MenuSelect);
+        if ctx.rl.is_key_pressed(KeyboardKey::KEY_ENTER) {
+            ctx.audio.play_sfx(SoundID::MenuSelect);
             let selected_action = MENU_ITEMS[self.selected].action;
             match selected_action {
                 MenuAction::NewGame => {
@@ -122,20 +109,20 @@ impl Menu {
                     return Some(Transition::Clear);
                 }
             }
-        } else if rl.is_key_pressed(KeyboardKey::KEY_UP) {
-            audio.play_sfx(SoundID::MenuSelect);
+        } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_UP) {
+            ctx.audio.play_sfx(SoundID::MenuSelect);
             self.select_previous();
             if MENU_ITEMS[self.selected].action == MenuAction::ContinueGame && !self.has_save {
                 self.select_previous();
             }
-        } else if rl.is_key_pressed(KeyboardKey::KEY_DOWN) {
-            audio.play_sfx(SoundID::MenuSelect);
+        } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_DOWN) {
+            ctx.audio.play_sfx(SoundID::MenuSelect);
             self.select_next();
             if MENU_ITEMS[self.selected].action == MenuAction::ContinueGame && !self.has_save {
                 self.select_next();
             }
-        } else if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
-            audio.play_sfx(SoundID::MenuSelect);
+        } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) {
+            ctx.audio.play_sfx(SoundID::MenuSelect);
             if self.has_save {
                 return Some(Transition::Switch(StateTag::Game));
             } else {
@@ -145,41 +132,15 @@ impl Menu {
         None
     }
 
-    fn select_previous(&mut self) {
-        if self.selected > 0 {
-            self.selected -= 1;
-        }
+    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
+        draw_menu_items(canvas, self.selected, self.flicker, self.has_save, resources);
     }
 
-    fn select_next(&mut self) {
-        if self.selected < MENU_ITEMS.len() - 1 {
-            self.selected += 1;
-        }
+    fn wants_4_3(&self) -> bool {
+        true
     }
 
-    pub fn draw(
-        &mut self,
-        canvas: &mut RaylibTextureMode<RaylibHandle>,
-        resources: &ResourceManager,
-    ) {
-        draw_menu_items(
-            canvas,
-            self.selected,
-            self.flicker,
-            self.has_save,
-            resources,
-        );
-    }
-
-    pub fn is_transparent(&self) -> bool {
-        false
-    }
-
-    pub fn is_transcendent(&self) -> bool {
-        false
-    }
-
-    pub fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
+    fn get_post_process_shader(&mut self) -> Option<&mut Shader> {
         self.crt_shader.as_mut()
     }
 }
@@ -239,13 +200,7 @@ fn draw_menu_items(
             );
         }
 
-        canvas.draw_text(
-            item.name,
-            GAME_WIDTH - margin_text_to_right_wall - lw,
-            y,
-            item_fontsize,
-            col,
-        );
+        canvas.draw_text(item.name, GAME_WIDTH - margin_text_to_right_wall - lw, y, item_fontsize, col);
 
         if is_selected && !is_disabled {
             let flicker_alpha = (((flicker * 6.0).sin() * 0.5 + 0.5) * 255.0) as u8;

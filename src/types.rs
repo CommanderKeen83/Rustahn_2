@@ -1,9 +1,7 @@
-
 pub struct EntityID(pub usize);
 
-
 #[derive(Debug, Clone, PartialEq)]
-pub enum EntityType{
+pub enum EntityType {
     Rabbit,
     Gobbler,
     EvilEye,
@@ -11,20 +9,20 @@ pub enum EntityType{
     Player,
     Bullet,
     Fireball,
-    Bomb
+    Bomb,
 }
 
-impl EntityType{
-    pub fn is_enemy(&self) -> bool{
+impl EntityType {
+    pub fn is_enemy(&self) -> bool {
         matches!(self, EntityType::Gobbler | EntityType::EvilEye | EntityType::Fireworm)
     }
-    pub fn is_weapon(&self) -> bool{
+    pub fn is_weapon(&self) -> bool {
         matches!(self, EntityType::Bullet | EntityType::Fireball | EntityType::Bomb)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SpriteID{
+pub enum SpriteID {
     Rabbit,
     Gobbler,
     EvilEye,
@@ -36,6 +34,5 @@ pub enum SpriteID{
     MenuBackground,
     GameIntroBackground,
     GameIntroStormCloud,
-    GameIntroWindowLamp
+    GameIntroWindowLamp,
 }
-

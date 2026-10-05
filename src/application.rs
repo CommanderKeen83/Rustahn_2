@@ -68,7 +68,6 @@ impl<'aud> Application<'aud> {
         let (rl, thread) = window.get_handles();
         let mut statemanager = StateManager::new(StateTag::Menu);
         statemanager.apply_lifecycles(rl, thread, &mut resource_manager);
-        statemanager.init_resources(rl, thread);
 
         Self {
             resource_manager,

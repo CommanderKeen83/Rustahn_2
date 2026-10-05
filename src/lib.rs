@@ -1,4 +1,5 @@
 pub mod application;
+pub mod audio;
 pub mod components;
 pub mod ecs;
 pub mod gamestate;
@@ -9,4 +10,3 @@ pub mod statemanager;
 pub mod systems;
 pub mod types;
 pub mod window;
-pub mod audio;

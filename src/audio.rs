@@ -38,6 +38,14 @@ impl<'a, 'aud> AudioManager<'a, 'aud> {
         }
     }
 
+    pub fn reborrow<'b>(&'b mut self) -> AudioManager<'b, 'b> {
+        AudioManager {
+            current_music: &mut *self.current_music,
+            music_tracks: self.music_tracks,
+            sound_effects: self.sound_effects,
+        }
+    }
+
     pub fn play_music(&mut self, id: MusicID) {
         if *self.current_music == Some(id) {
             return;

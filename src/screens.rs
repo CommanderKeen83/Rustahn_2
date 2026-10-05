@@ -4,6 +4,7 @@ mod menu;
 mod option;
 mod pause;
 
+pub use crate::statemanager::Screen;
 pub use game::Game;
 pub use gameintro::GameIntro;
 pub use menu::Menu;

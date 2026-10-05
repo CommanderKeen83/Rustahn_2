@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use sola_raylib::prelude::*;
 use crate::prelude::SpriteID;
+use sola_raylib::prelude::*;
+use std::collections::HashMap;
 
 pub struct ResourceManager {
     textures: HashMap<SpriteID, Texture2D>,
@@ -19,7 +19,8 @@ impl ResourceManager {
         thread: &RaylibThread,
         id: SpriteID,
         path: &str,
-    ) -> Result<(), String> { // Returning Ok(()) indicates "the operation succeeded, but there is no value to return."
+    ) -> Result<(), String> {
+        // Returning Ok(()) indicates "the operation succeeded, but there is no value to return."
         let texture = rl.load_texture(thread, path).map_err(|e| format!("{:?}", e))?;
         self.textures.insert(id, texture);
         Ok(())
