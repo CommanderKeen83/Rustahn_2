@@ -5,6 +5,7 @@ pub mod ecs;
 pub mod gamestate;
 pub mod prelude;
 pub mod resources;
+pub mod scenes;
 pub mod screens;
 pub mod statemanager;
 pub mod systems;

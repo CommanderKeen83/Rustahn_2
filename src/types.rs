@@ -35,4 +35,6 @@ pub enum SpriteID {
     GameIntroBackground,
     GameIntroStormCloud,
     GameIntroWindowLamp,
+    LevelOneBackground,
+    ActOneForeground,
 }
