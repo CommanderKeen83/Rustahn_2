@@ -2,7 +2,7 @@ pub use crate::application::*;
 pub use crate::audio::{AudioManager, MusicID, SoundID};
 pub use crate::camera::GameCamera;
 pub use crate::components::*;
-pub use crate::ecs;
+pub use crate::ecs::{self, World};
 pub use crate::gamestate::Gamestate;
 pub use crate::resources::ResourceManager;
 pub use crate::scenes::{self, Scene, SceneAction, SceneManager};

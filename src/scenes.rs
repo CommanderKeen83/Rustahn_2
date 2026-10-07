@@ -3,7 +3,7 @@ pub mod act_one;
 use crate::prelude::*;
 use sola_raylib::prelude::*;
 
-pub use act_one::{ActOnePhase, ActOneScene};
+pub use act_one::{ActOnePhase, ActOneScene, IntroPan};
 pub type LevelOneScene = ActOneScene;
 pub type ActOne = ActOneScene;
 
