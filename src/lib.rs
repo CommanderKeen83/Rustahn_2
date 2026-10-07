@@ -1,5 +1,6 @@
 pub mod application;
 pub mod audio;
+pub mod camera;
 pub mod components;
 pub mod ecs;
 pub mod gamestate;

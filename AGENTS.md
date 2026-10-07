@@ -13,6 +13,7 @@ Single crate (not a workspace). Binary (`main.rs`) + library (`lib.rs`).
 - **`ecs.rs`** — Custom ECS using SoA (struct-of-arrays) layout. Entities are `usize` indices into parallel `Vec`s on `World`. Optional components use `Vec<Option<T>>` sparse arrays.
 - **`components.rs`** — Component structs (`MovementData`, `AnimationData`, `Mortality`, `WeaponSet`, `PhysicsData`) and stat constants.
 - **`types.rs`** — `EntityType` enum (tags), `SpriteID` enum, `EntityID` wrapper.
+- **`camera.rs`** — 2D viewport camera (`GameCamera`) managing virtual coordinates (320x180), panning, and screen projection.
 - **`systems/`** — ECS systems: `physics`, `collision`, `behaviour` (with `gobbler` submodule), `input`. Most are stubs.
 - **`prelude.rs`** — Re-exports all public modules and types.
 

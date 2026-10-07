@@ -3,6 +3,10 @@ use sola_raylib::prelude::*;
 pub const GAME_WIDTH: i32 = 1280;
 pub const GAME_HEIGHT: i32 = 720;
 
+pub const VIRTUAL_WIDTH: i32 = 320;
+pub const VIRTUAL_HEIGHT: i32 = 180;
+pub const VIRTUAL_SCALE: f32 = 4.0;
+
 pub struct Window {
     thread: RaylibThread,
     source_rec: Rectangle,
