@@ -114,6 +114,52 @@ impl Default for GameCamera {
     }
 }
 
+/// Phase of an introductory panning sequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntroPhase {
+    /// Initial hold steady at the beginning of the viewport path.
+    InitialHold,
+    /// Smooth panning across the virtual panorama.
+    Panning,
+    /// Reached target boundary and stays steady.
+    Stationary,
+}
+
+/// Backwards-compatible alias for the phase in Act One.
+pub type ActOnePhase = IntroPhase;
+
+/// Pure, deterministic intro camera controller: hold, then pan, then stop.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IntroPan {
+    pub hold: f32,
+    pub speed: f32,
+    pub max_x: f32,
+}
+
+impl IntroPan {
+    pub const fn new(hold: f32, speed: f32, max_x: f32) -> Self {
+        Self { hold, speed, max_x }
+    }
+
+    pub fn camera_x(&self, t: f32) -> f32 {
+        ((t - self.hold).max(0.0) * self.speed).min(self.max_x)
+    }
+
+    pub fn phase(&self, t: f32) -> IntroPhase {
+        if t < self.hold {
+            IntroPhase::InitialHold
+        } else if self.camera_x(t) < self.max_x {
+            IntroPhase::Panning
+        } else {
+            IntroPhase::Stationary
+        }
+    }
+
+    pub fn finish_time(&self) -> f32 {
+        self.hold + self.max_x / self.speed
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +204,17 @@ mod tests {
         assert_eq!(cam.to_screen_x(500.0, 0.25), 400.0);
         // At parallax 1.0: cam offset is 100 * 4.0 * 1.0 = 400.0
         assert_eq!(cam.to_screen_x(500.0, 1.0), 100.0);
+    }
+
+    #[test]
+    fn test_intro_pan_sequence() {
+        let pan = IntroPan::new(6.0, 25.0, 320.0);
+        assert_eq!(pan.camera_x(3.0), 0.0);
+        assert_eq!(pan.phase(3.0), IntroPhase::InitialHold);
+        assert_eq!(pan.camera_x(10.0), 100.0);
+        assert_eq!(pan.phase(10.0), IntroPhase::Panning);
+        assert_eq!(pan.camera_x(25.0), 320.0);
+        assert_eq!(pan.phase(25.0), IntroPhase::Stationary);
+        assert!((pan.finish_time() - 18.8).abs() < 1e-4);
     }
 }

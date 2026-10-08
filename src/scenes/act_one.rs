@@ -1,65 +1,17 @@
 use crate::prelude::*;
+use crate::scenes::asteroid_field::{Asteroid, AsteroidField};
 use crate::scenes::{Scene, SceneAction};
 use sola_raylib::prelude::*;
 
-#[derive(Debug, Clone)]
-pub struct Asteroid {
-    pub base_x: f32,
-    pub base_y: f32,
-    pub speed_x: f32,
-    pub speed_y: f32,
-    pub width: i32,
-    pub height: i32,
-    pub color: Color,
-}
+// Re-export camera pan types and asteroid types for backwards compatibility
+pub use crate::camera::{ActOnePhase, IntroPan, IntroPhase};
+pub use crate::scenes::asteroid_field::{Asteroid as ActOneAsteroid, AsteroidField as ActOneAsteroidField};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActOnePhase {
-    /// 0..6s: Camera holds steady at the left edge of the skyline.
-    InitialHold,
-    /// 6s..18.8s: Camera glides smoothly rightward across the panorama.
-    Panning,
-    /// 18.8s+: Camera reached the right boundary of the 640px background and stays steady.
-    Stationary,
-}
-
-/// Pure, deterministic intro camera controller: hold, then pan, then stop.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct IntroPan {
-    pub hold: f32,
-    pub speed: f32,
-    pub max_x: f32,
-}
-
-impl IntroPan {
-    pub const fn new(hold: f32, speed: f32, max_x: f32) -> Self {
-        Self { hold, speed, max_x }
-    }
-
-    pub fn camera_x(&self, t: f32) -> f32 {
-        ((t - self.hold).max(0.0) * self.speed).min(self.max_x)
-    }
-
-    pub fn phase(&self, t: f32) -> ActOnePhase {
-        if t < self.hold {
-            ActOnePhase::InitialHold
-        } else if self.camera_x(t) < self.max_x {
-            ActOnePhase::Panning
-        } else {
-            ActOnePhase::Stationary
-        }
-    }
-
-    pub fn finish_time(&self) -> f32 {
-        self.hold + self.max_x / self.speed
-    }
-}
-
-/// Act One / Level 1 scene featuring the calm night skyline and gently undulating asteroids.
+/// Act One / Level 1 scene featuring the calm night skyline, drifting asteroids, and parked player ship.
 pub struct ActOneScene {
     world: World,
     player_id: Option<EntityID>,
-    asteroids: Vec<Asteroid>,
+    asteroid_field: AsteroidField,
     time: f32,
     pan: IntroPan,
     pub camera: GameCamera,
@@ -77,6 +29,9 @@ impl ActOneScene {
     /// Parked position on the ground on the right side of the 640px background panorama.
     pub const PLAYER_SPAWN_X: f32 = 560.0;
     pub const PLAYER_SPAWN_Y: f32 = 166.0;
+
+    pub const SKY_TOP: f32 = AsteroidField::SKY_TOP;
+    pub const SKY_BOTTOM: f32 = AsteroidField::SKY_BOTTOM;
 
     pub fn new() -> Self {
         let mut world = World::new();
@@ -99,7 +54,7 @@ impl ActOneScene {
         Self {
             world,
             player_id: Some(player_id),
-            asteroids: Self::init_asteroids(),
+            asteroid_field: AsteroidField::new(),
             time: 0.0,
             pan: IntroPan::new(Self::HOLD_DURATION, Self::PAN_SPEED, Self::MAX_PAN),
             camera: GameCamera::new(),
@@ -150,101 +105,21 @@ impl ActOneScene {
         self.phase() == ActOnePhase::Stationary
     }
 
+    pub fn asteroid_field(&self) -> &AsteroidField {
+        &self.asteroid_field
+    }
+
+    pub fn asteroid_field_mut(&mut self) -> &mut AsteroidField {
+        &mut self.asteroid_field
+    }
+
     pub fn asteroids(&self) -> &[Asteroid] {
-        &self.asteroids
+        self.asteroid_field.asteroids()
     }
 
-    const ASTEROID_COUNT: usize = 225;
-    const ASTEROID_WRAP_SPAN: f32 = 3300.0;
-    const ASTEROID_START_X: f32 = -150.0;
-    pub const SKY_TOP: f32 = -30.0;
-    pub const SKY_BOTTOM: f32 = 330.0;
-    const SKY_SPAN: f32 = Self::SKY_BOTTOM - Self::SKY_TOP;
-
-    /// Fast, deterministic 32-bit integer pseudo-random number generator in [0.0, 1.0).
-    fn pseudo_random(i: usize, seed: u32) -> f32 {
-        let mut n = (i as u32).wrapping_mul(0x85ebca6b).wrapping_add(seed);
-        n ^= n >> 13;
-        n = n.wrapping_mul(0xc2b2ae35);
-        n ^= n >> 16;
-        (n as f32) / (u32::MAX as f32)
-    }
-
-    fn init_asteroids() -> Vec<Asteroid> {
-        let mut list = Vec::with_capacity(Self::ASTEROID_COUNT);
-
-        // Warm retro palette: yellow, orange, red, and muted ochre shades
-        let colors = [
-            Color::new(255, 245, 175, 255), // light cream / pearl gold
-            Color::new(255, 215, 60, 255),  // warm yellow
-            Color::new(250, 185, 45, 255),  // golden amber
-            Color::new(245, 135, 40, 255),  // vibrant orange
-            Color::new(225, 75, 35, 255),   // deep orange-red
-            Color::new(200, 125, 50, 255),  // muted ochre
-            Color::new(175, 55, 35, 255),   // dark terracotta / ruby
-        ];
-
-        let sizes = [(2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (4, 6), (6, 4), (4, 4), (2, 2)];
-
-        for i in 0..Self::ASTEROID_COUNT {
-            let frac = i as f32 / Self::ASTEROID_COUNT as f32;
-            let jitter = (Self::pseudo_random(i, 1) - 0.5)
-                * (Self::ASTEROID_WRAP_SPAN / Self::ASTEROID_COUNT as f32 * 1.6);
-            let base_x = Self::ASTEROID_START_X + frac * Self::ASTEROID_WRAP_SPAN + jitter;
-
-            // Scatter vertically across the open starry night sky
-            let base_y = Self::SKY_TOP + Self::pseudo_random(i, 2) * Self::SKY_SPAN;
-
-            // Low trajectory diagonal path from top-right to bottom-left:
-            // speed_x moves leftward (30..42 px/s), speed_y moves downward with a shallow slope (~12..17 degrees)
-            let speed_x = 30.0 + Self::pseudo_random(i, 3) * 12.0;
-            let slope = 0.22 + Self::pseudo_random(i, 4) * 0.08;
-            let speed_y = speed_x * slope;
-
-            let size_idx = (Self::pseudo_random(i, 5) * sizes.len() as f32) as usize % sizes.len();
-            let (w, h) = sizes[size_idx];
-
-            let color_idx = (Self::pseudo_random(i, 6) * colors.len() as f32) as usize % colors.len();
-            let color = colors[color_idx];
-
-            list.push(Asteroid {
-                base_x,
-                base_y,
-                speed_x,
-                speed_y,
-                width: w,
-                height: h,
-                color,
-            });
-        }
-
-        list
-    }
-
-    /// Updates asteroid positions along a straight low trajectory from top-right to bottom-left.
     pub fn update_asteroids(&mut self, dt: f32) {
         let parallax_cam_x = self.camera.x() * VIRTUAL_SCALE * 0.25;
-        let wrap_bound = parallax_cam_x - 150.0;
-        let wrap_max = wrap_bound + Self::ASTEROID_WRAP_SPAN;
-
-        for a in &mut self.asteroids {
-            a.base_x -= a.speed_x * dt;
-            a.base_y += a.speed_y * dt;
-
-            while a.base_x < wrap_bound {
-                a.base_x += Self::ASTEROID_WRAP_SPAN;
-            }
-            while a.base_x > wrap_max {
-                a.base_x -= Self::ASTEROID_WRAP_SPAN;
-            }
-
-            while a.base_y > Self::SKY_BOTTOM {
-                a.base_y -= Self::SKY_SPAN;
-            }
-            while a.base_y < Self::SKY_TOP {
-                a.base_y += Self::SKY_SPAN;
-            }
-        }
+        self.asteroid_field.update(dt, parallax_cam_x);
     }
 }
 
@@ -284,7 +159,9 @@ impl Scene for ActOneScene {
 
         self.time += ctx.dt;
         self.camera.set_x(self.pan.camera_x(self.time));
-        self.update_asteroids(ctx.dt);
+
+        let parallax_cam_x = self.camera.x() * VIRTUAL_SCALE * 0.25;
+        self.asteroid_field.update(ctx.dt, parallax_cam_x);
 
         if self.is_pan_finished() {
             // Gameplay hooks will start here
@@ -303,12 +180,7 @@ impl Scene for ActOneScene {
         }
 
         // 2. Render scattered asteroids traveling along low-trajectory diagonal paths
-        for a in &self.asteroids {
-            let current_x = self.camera.to_screen_x(a.base_x, 0.25).round();
-            let current_y = a.base_y.round();
-
-            canvas.draw_rectangle(current_x as i32, current_y as i32, a.width, a.height, a.color);
-        }
+        self.asteroid_field.draw(canvas, &self.camera);
 
         // 3. Draw foreground (hills / skyline) over the asteroids
         // The texture is 640x180. The camera samples a 320x180 viewport window from the texture,
@@ -393,12 +265,12 @@ mod tests {
     fn test_act_one_asteroids_initialization() {
         let scene = ActOneScene::new();
         assert_eq!(
-            scene.asteroids.len(),
+            scene.asteroids().len(),
             225,
             "Expected exactly 225 scattered asteroids"
         );
 
-        for a in &scene.asteroids {
+        for a in scene.asteroids() {
             assert!(a.width >= 1 && a.width <= 6, "Asteroid width must be 1..=6");
             assert!(a.height >= 1 && a.height <= 6, "Asteroid height must be 1..=6");
             assert!(
@@ -465,11 +337,11 @@ mod tests {
         let screen_min = 0.0;
         let screen_max = GAME_WIDTH as f32;
 
-        let has_left_coverage = scene.asteroids.iter().any(|a| {
+        let has_left_coverage = scene.asteroids().iter().any(|a| {
             let sx = a.base_x - parallax_cam_x;
             sx <= screen_min && sx >= -150.0
         });
-        let has_right_coverage = scene.asteroids.iter().any(|a| {
+        let has_right_coverage = scene.asteroids().iter().any(|a| {
             let sx = a.base_x - parallax_cam_x;
             sx >= screen_max && sx <= screen_max + 2000.0
         });

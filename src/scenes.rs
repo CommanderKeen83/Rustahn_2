@@ -1,9 +1,12 @@
 pub mod act_one;
+pub mod asteroid_field;
 
 use crate::prelude::*;
 use sola_raylib::prelude::*;
 
-pub use act_one::{ActOnePhase, ActOneScene, IntroPan};
+pub use crate::camera::{ActOnePhase, IntroPan, IntroPhase};
+pub use act_one::ActOneScene;
+pub use asteroid_field::{Asteroid, AsteroidField};
 pub type LevelOneScene = ActOneScene;
 pub type ActOne = ActOneScene;
 

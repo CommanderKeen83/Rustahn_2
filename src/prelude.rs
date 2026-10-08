@@ -1,11 +1,11 @@
 pub use crate::application::*;
 pub use crate::audio::{AudioManager, MusicID, SoundID};
-pub use crate::camera::GameCamera;
+pub use crate::camera::{GameCamera, IntroPan, IntroPhase};
 pub use crate::components::*;
 pub use crate::ecs::{self, World};
 pub use crate::gamestate::Gamestate;
 pub use crate::resources::ResourceManager;
-pub use crate::scenes::{self, Scene, SceneAction, SceneManager};
+pub use crate::scenes::{self, Asteroid, AsteroidField, Scene, SceneAction, SceneManager};
 pub use crate::screens;
 pub use crate::statemanager::*;
 pub use crate::systems::{behaviour, collision, physics};
