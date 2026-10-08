@@ -6,10 +6,10 @@ use sola_raylib::prelude::*;
 pub struct Asteroid {
     pub base_x: f32,
     pub base_y: f32,
+    pub speed_x: f32,
+    pub speed_y: f32,
     pub width: i32,
     pub height: i32,
-    pub phase: f32,
-    pub amplitude: f32,
     pub color: Color,
 }
 
@@ -154,16 +154,24 @@ impl ActOneScene {
         &self.asteroids
     }
 
-    const ASTEROID_COUNT: usize = 150;
-    const ASTEROID_SPACING: f32 = 22.0;
-    const ASTEROID_WRAP_SPAN: f32 = Self::ASTEROID_COUNT as f32 * Self::ASTEROID_SPACING; // 3300.0
-    const ASTEROID_START_X: f32 = -100.0;
-    const ASTEROID_DRIFT_SPEED: f32 = 25.0;
+    const ASTEROID_COUNT: usize = 225;
+    const ASTEROID_WRAP_SPAN: f32 = 3300.0;
+    const ASTEROID_START_X: f32 = -150.0;
+    pub const SKY_TOP: f32 = -30.0;
+    pub const SKY_BOTTOM: f32 = 330.0;
+    const SKY_SPAN: f32 = Self::SKY_BOTTOM - Self::SKY_TOP;
+
+    /// Fast, deterministic 32-bit integer pseudo-random number generator in [0.0, 1.0).
+    fn pseudo_random(i: usize, seed: u32) -> f32 {
+        let mut n = (i as u32).wrapping_mul(0x85ebca6b).wrapping_add(seed);
+        n ^= n >> 13;
+        n = n.wrapping_mul(0xc2b2ae35);
+        n ^= n >> 16;
+        (n as f32) / (u32::MAX as f32)
+    }
 
     fn init_asteroids() -> Vec<Asteroid> {
-        // 150 core pearls + 75 companion micro-specks (one for every even index) = exactly 225
-        const TOTAL_CAPACITY: usize = ActOneScene::ASTEROID_COUNT + ActOneScene::ASTEROID_COUNT / 2;
-        let mut list = Vec::with_capacity(TOTAL_CAPACITY);
+        let mut list = Vec::with_capacity(Self::ASTEROID_COUNT);
 
         // Warm retro palette: yellow, orange, red, and muted ochre shades
         let colors = [
@@ -176,64 +184,65 @@ impl ActOneScene {
             Color::new(175, 55, 35, 255),   // dark terracotta / ruby
         ];
 
-        let sizes = [(4, 4), (6, 6), (4, 6), (6, 4), (4, 4), (2, 2), (4, 4)];
+        let sizes = [(2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (4, 6), (6, 4), (4, 4), (2, 2)];
 
         for i in 0..Self::ASTEROID_COUNT {
-            let x = Self::ASTEROID_START_X + i as f32 * Self::ASTEROID_SPACING;
-            // Baseline follows a gentle arch across the starry sky (y: ~180 to ~230)
-            let arch = (i as f32 * std::f32::consts::TAU / Self::ASTEROID_COUNT as f32).sin() * 25.0;
-            let base_y = 205.0 + arch;
-            let (w, h) = sizes[i % sizes.len()];
-            let color = colors[i % colors.len()];
-            let phase = i as f32 * 0.12;
-            let amplitude = 22.0 + (i as f32 * 0.25).sin() * 5.0;
+            let frac = i as f32 / Self::ASTEROID_COUNT as f32;
+            let jitter = (Self::pseudo_random(i, 1) - 0.5)
+                * (Self::ASTEROID_WRAP_SPAN / Self::ASTEROID_COUNT as f32 * 1.6);
+            let base_x = Self::ASTEROID_START_X + frac * Self::ASTEROID_WRAP_SPAN + jitter;
 
-            // Core pearl bead
+            // Scatter vertically across the open starry night sky
+            let base_y = Self::SKY_TOP + Self::pseudo_random(i, 2) * Self::SKY_SPAN;
+
+            // Low trajectory diagonal path from top-right to bottom-left:
+            // speed_x moves leftward (30..42 px/s), speed_y moves downward with a shallow slope (~12..17 degrees)
+            let speed_x = 30.0 + Self::pseudo_random(i, 3) * 12.0;
+            let slope = 0.22 + Self::pseudo_random(i, 4) * 0.08;
+            let speed_y = speed_x * slope;
+
+            let size_idx = (Self::pseudo_random(i, 5) * sizes.len() as f32) as usize % sizes.len();
+            let (w, h) = sizes[size_idx];
+
+            let color_idx = (Self::pseudo_random(i, 6) * colors.len() as f32) as usize % colors.len();
+            let color = colors[color_idx];
+
             list.push(Asteroid {
-                base_x: x,
+                base_x,
                 base_y,
+                speed_x,
+                speed_y,
                 width: w,
                 height: h,
-                phase,
-                amplitude,
                 color,
             });
-
-            // Companion micro-cluster specks around select pearls
-            if i % 2 == 0 {
-                let offset_x = if i % 4 == 0 { 4.0 } else { -4.0 };
-                let offset_y = if i % 4 == 0 { 3.0 } else { -3.0 };
-                let speck_color = colors[(i + 3) % colors.len()];
-                let (sw, sh) = if i % 3 == 0 { (2, 2) } else { (3, 2) };
-
-                list.push(Asteroid {
-                    base_x: x + offset_x,
-                    base_y: base_y + offset_y,
-                    width: sw,
-                    height: sh,
-                    phase: phase + 0.08,
-                    amplitude,
-                    color: speck_color,
-                });
-            }
         }
 
         list
     }
 
-    /// Updates asteroid positions, gently drifting and wrapping seamlessly around the camera.
+    /// Updates asteroid positions along a straight low trajectory from top-right to bottom-left.
     pub fn update_asteroids(&mut self, dt: f32) {
         let parallax_cam_x = self.camera.x() * VIRTUAL_SCALE * 0.25;
-        let wrap_bound = parallax_cam_x - 120.0;
+        let wrap_bound = parallax_cam_x - 150.0;
         let wrap_max = wrap_bound + Self::ASTEROID_WRAP_SPAN;
 
         for a in &mut self.asteroids {
-            a.base_x -= Self::ASTEROID_DRIFT_SPEED * dt;
+            a.base_x -= a.speed_x * dt;
+            a.base_y += a.speed_y * dt;
+
             while a.base_x < wrap_bound {
                 a.base_x += Self::ASTEROID_WRAP_SPAN;
             }
             while a.base_x > wrap_max {
                 a.base_x -= Self::ASTEROID_WRAP_SPAN;
+            }
+
+            while a.base_y > Self::SKY_BOTTOM {
+                a.base_y -= Self::SKY_SPAN;
+            }
+            while a.base_y < Self::SKY_TOP {
+                a.base_y += Self::SKY_SPAN;
             }
         }
     }
@@ -293,16 +302,10 @@ impl Scene for ActOneScene {
             canvas.draw_texture_pro(tex, source, dest, Vector2::new(0.0, 0.0), 0.0, Color::WHITE);
         }
 
-        // 2. Render gently moving string of pearls asteroids
-        // Wave number matches wrap span so sinusoidal wrapping is seamless:
-        // k = (2 * 2pi) / ASTEROID_WRAP_SPAN
-        const K: f32 = (2.0 * std::f32::consts::TAU) / ActOneScene::ASTEROID_WRAP_SPAN;
-        const OMEGA: f32 = 1.4;
-
+        // 2. Render scattered asteroids traveling along low-trajectory diagonal paths
         for a in &self.asteroids {
             let current_x = self.camera.to_screen_x(a.base_x, 0.25).round();
-            let wave = (self.time * OMEGA + a.base_x * K + a.phase).sin();
-            let current_y = (a.base_y + wave * a.amplitude).round();
+            let current_y = a.base_y.round();
 
             canvas.draw_rectangle(current_x as i32, current_y as i32, a.width, a.height, a.color);
         }
@@ -392,15 +395,56 @@ mod tests {
         assert_eq!(
             scene.asteroids.len(),
             225,
-            "Expected exactly 225 asteroids (150 pearls + 75 companion specks)"
+            "Expected exactly 225 scattered asteroids"
         );
 
         for a in &scene.asteroids {
             assert!(a.width >= 1 && a.width <= 6, "Asteroid width must be 1..=6");
             assert!(a.height >= 1 && a.height <= 6, "Asteroid height must be 1..=6");
-            assert!(a.base_y >= 150.0 && a.base_y <= 300.0, "Asteroid base_y in starry sky range");
-            assert!(a.amplitude > 0.0, "Asteroid must have positive wave amplitude");
+            assert!(
+                a.base_y >= ActOneScene::SKY_TOP && a.base_y <= ActOneScene::SKY_BOTTOM,
+                "Asteroid base_y in starry sky range"
+            );
+            assert!(a.speed_x > 0.0, "Asteroid must travel leftward");
+            assert!(a.speed_y > 0.0, "Asteroid must travel downward");
+            let slope = a.speed_y / a.speed_x;
+            assert!(
+                slope >= 0.15 && slope <= 0.35,
+                "Asteroid must follow low diagonal trajectory"
+            );
         }
+    }
+
+    #[test]
+    fn test_act_one_asteroids_diagonal_motion() {
+        let mut scene = ActOneScene::new();
+        let initial_positions: Vec<(f32, f32)> = scene
+            .asteroids()
+            .iter()
+            .map(|a| (a.base_x, a.base_y))
+            .collect();
+
+        // Advance 1 second
+        scene.update_asteroids(1.0);
+
+        let mut checked_count = 0;
+        for (i, a) in scene.asteroids().iter().enumerate() {
+            let (init_x, init_y) = initial_positions[i];
+            // Asteroids that did not wrap across wrap boundaries moved along straight diagonal vector
+            if a.base_x < init_x && a.base_y > init_y {
+                let dx = init_x - a.base_x;
+                let dy = a.base_y - init_y;
+                assert!(dx > 0.0, "Must travel leftward");
+                assert!(dy > 0.0, "Must travel downward");
+                let slope = dy / dx;
+                assert!(
+                    slope >= 0.15 && slope <= 0.35,
+                    "Must keep low downward trajectory"
+                );
+                checked_count += 1;
+            }
+        }
+        assert!(checked_count > 200, "Most asteroids should advance without wrapping in 1s");
     }
 
     #[test]
