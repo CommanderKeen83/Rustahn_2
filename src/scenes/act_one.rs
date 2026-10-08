@@ -71,16 +71,19 @@ impl ActOneScene {
     pub const MAX_PAN: f32 = 320.0; // 640 foreground width - 320 camera viewport width
 
     // Player spaceship dimensions in 320x180 virtual pixels.
-    // 36x16 scales down the 1882x836 original texture proportionally (1882 / 836 ≈ 2.25).
+    // Scales down the 1882x836 original texture proportionally (1882 / 836 ≈ 2.25).
     pub const PLAYER_WIDTH: f32 = 78.0;
     pub const PLAYER_HEIGHT: f32 = 34.0;
+    /// Parked position on the ground on the right side of the 640px background panorama.
+    pub const PLAYER_SPAWN_X: f32 = 560.0;
+    pub const PLAYER_SPAWN_Y: f32 = 166.0;
 
     pub fn new() -> Self {
         let mut world = World::new();
         let player_id = world
             .spawn(
                 EntityType::Player,
-                Vector2::new(400.0, 90.0),
+                Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y),
                 Vector2::new(0.0, 0.0),
                 0.0,
                 true,
@@ -262,7 +265,7 @@ impl Scene for ActOneScene {
             eprintln!("Failed to load act one foreground: {}", e);
         }
 
-        if let Err(e) = resources.load_texture(rl, thread, SpriteID::Player, "resources/graphics/spaceship.png") {
+        if let Err(e) = resources.load_texture(rl, thread, SpriteID::Player, "resources/graphics/spaceship2.png") {
             eprintln!("Failed to load spaceship player texture: {}", e);
         }
     }
@@ -273,14 +276,6 @@ impl Scene for ActOneScene {
         self.time += ctx.dt;
         self.camera.set_x(self.pan.camera_x(self.time));
         self.update_asteroids(ctx.dt);
-
-        // Keep player ship cruising along with the camera pan in virtual coordinates
-        if let Some(player_id) = self.player_id {
-            // Screen x = 50.0, with a gentle hovering undulation
-            let hover = (self.time * 2.5).sin() * 1.5;
-            self.world.positions[player_id.0].x = self.camera.x() + 50.0;
-            self.world.positions[player_id.0].y = 90.0 + hover;
-        }
 
         if self.is_pan_finished() {
             // Gameplay hooks will start here
@@ -455,16 +450,29 @@ mod tests {
         assert_eq!(scene.world().sprite_ids[id.0], SpriteID::Player);
         assert!(scene.world().movement_data[id.0].is_some());
         let pos = scene.player_position().unwrap();
-        assert_eq!(pos.x, 400.0);
-        assert_eq!(pos.y, 90.0);
+        assert_eq!(pos.x, ActOneScene::PLAYER_SPAWN_X);
+        assert_eq!(pos.y, ActOneScene::PLAYER_SPAWN_Y);
     }
 
     #[test]
     fn test_act_one_player_dimensions() {
-        assert_eq!(ActOneScene::PLAYER_WIDTH, 50.0);
-        assert_eq!(ActOneScene::PLAYER_HEIGHT, 22.0);
+        assert_eq!(ActOneScene::PLAYER_WIDTH, 78.0);
+        assert_eq!(ActOneScene::PLAYER_HEIGHT, 34.0);
         let ratio = ActOneScene::PLAYER_WIDTH / ActOneScene::PLAYER_HEIGHT;
         let expected_ratio = 1882.0 / 836.0;
         assert!((ratio - expected_ratio).abs() < 0.05);
+    }
+
+    #[test]
+    fn test_act_one_player_stays_fixed_and_hidden_at_start() {
+        let scene = ActOneScene::new();
+        let initial_pos = scene.player_position().unwrap();
+
+        // Player must start offscreen to the right of the initial camera viewport (320px)
+        let player_left_edge = initial_pos.x - ActOneScene::PLAYER_WIDTH * 0.5;
+        assert!(
+            player_left_edge > scene.camera().viewport_width,
+            "Player must not be visible within the initial 320px viewport"
+        );
     }
 }
