@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use crate::scenes::asteroid_field::{Asteroid, AsteroidField};
 use crate::scenes::{Scene, SceneAction};
+use crate::systems::collision;
 use sola_raylib::prelude::*;
 
 // Re-export camera pan types and asteroid types for backwards compatibility
@@ -11,6 +12,7 @@ pub use crate::scenes::asteroid_field::{Asteroid as ActOneAsteroid, AsteroidFiel
 pub struct ActOneScene {
     world: World,
     player_id: Option<EntityID>,
+    ground_id: Option<EntityID>,
     asteroid_field: AsteroidField,
     time: f32,
     pan: IntroPan,
@@ -30,6 +32,14 @@ impl ActOneScene {
     pub const PLAYER_SPAWN_X: f32 = 560.0;
     pub const PLAYER_SPAWN_Y: f32 = 166.0;
 
+    /// Ground collider dimensions and position underneath the parked spaceship.
+    /// Top of ground rectangle = GROUND_Y - GROUND_HEIGHT * 0.5 = 203.0 - 20.0 = 183.0.
+    /// Bottom of spaceship = PLAYER_SPAWN_Y + PLAYER_HEIGHT * 0.5 = 166.0 + 17.0 = 183.0.
+    pub const GROUND_X: f32 = 560.0;
+    pub const GROUND_Y: f32 = 203.0;
+    pub const GROUND_WIDTH: f32 = 200.0;
+    pub const GROUND_HEIGHT: f32 = 40.0;
+
     pub const SKY_TOP: f32 = AsteroidField::SKY_TOP;
     pub const SKY_BOTTOM: f32 = AsteroidField::SKY_BOTTOM;
 
@@ -45,15 +55,31 @@ impl ActOneScene {
                 SpriteID::Player,
             )
             .with_movement(MovementData::new(
-                player_stats::THRUST_POWER,
+                player_stats::LIFT_THRUST,
                 player_stats::MAX_SPEED,
                 player_stats::ROTATION_SPEED,
             ))
+            .with_physics(PhysicsData::dynamic())
+            .with_collider(Collider::new(Self::PLAYER_WIDTH, Self::PLAYER_HEIGHT))
+            .build();
+
+        let ground_id = world
+            .spawn(
+                EntityType::Ground,
+                Vector2::new(Self::GROUND_X, Self::GROUND_Y),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::None,
+            )
+            .with_collider(Collider::new(Self::GROUND_WIDTH, Self::GROUND_HEIGHT))
+            .with_physics(PhysicsData::static_body())
             .build();
 
         Self {
             world,
             player_id: Some(player_id),
+            ground_id: Some(ground_id),
             asteroid_field: AsteroidField::new(),
             time: 0.0,
             pan: IntroPan::new(Self::HOLD_DURATION, Self::PAN_SPEED, Self::MAX_PAN),
@@ -75,6 +101,14 @@ impl ActOneScene {
 
     pub fn player_position(&self) -> Option<Vector2> {
         self.player_id.map(|id| self.world.positions[id.0])
+    }
+
+    pub fn ground_id(&self) -> Option<EntityID> {
+        self.ground_id
+    }
+
+    pub fn ground_position(&self) -> Option<Vector2> {
+        self.ground_id.map(|id| self.world.positions[id.0])
     }
 
     pub fn pan(&self) -> &IntroPan {
@@ -121,6 +155,15 @@ impl ActOneScene {
         let parallax_cam_x = self.camera.x() * VIRTUAL_SCALE * 0.25;
         self.asteroid_field.update(dt, parallax_cam_x);
     }
+
+    pub fn update_physics(&mut self, dt: f32) {
+        physics::update(&mut self.world, dt);
+        collision::update(&mut self.world, dt);
+    }
+
+    pub fn update_input(&mut self, input: &PlayerInput, dt: f32) {
+        crate::systems::input::update(&mut self.world, input, dt);
+    }
 }
 
 impl Default for ActOneScene {
@@ -162,6 +205,24 @@ impl Scene for ActOneScene {
 
         let parallax_cam_x = self.camera.x() * VIRTUAL_SCALE * 0.25;
         self.asteroid_field.update(ctx.dt, parallax_cam_x);
+
+        let input = PlayerInput::from_raylib(ctx.rl);
+        self.update_input(&input, ctx.dt);
+
+        self.update_physics(ctx.dt);
+
+        // Ceiling clamp so spaceship cannot fly off top of screen
+        if let Some(player_id) = self.player_id {
+            if self.world.alive[player_id.0] {
+                let min_y = Self::PLAYER_HEIGHT * 0.5;
+                if self.world.positions[player_id.0].y < min_y {
+                    self.world.positions[player_id.0].y = min_y;
+                    if self.world.velocities[player_id.0].y < 0.0 {
+                        self.world.velocities[player_id.0].y = 0.0;
+                    }
+                }
+            }
+        }
 
         if self.is_pan_finished() {
             // Gameplay hooks will start here
@@ -390,5 +451,210 @@ mod tests {
             player_left_edge > scene.camera().viewport_width,
             "Player must not be visible within the initial 320px viewport"
         );
+    }
+
+    #[test]
+    fn test_act_one_ground_initialization() {
+        let scene = ActOneScene::new();
+        assert!(scene.ground_id().is_some());
+        let id = scene.ground_id().unwrap();
+        assert_eq!(scene.world().tags[id.0], EntityType::Ground);
+        assert!(scene.world().alive[id.0]);
+        assert_eq!(scene.world().sprite_ids[id.0], SpriteID::None);
+        let pos = scene.ground_position().unwrap();
+        assert_eq!(pos.x, ActOneScene::GROUND_X);
+        assert_eq!(pos.y, ActOneScene::GROUND_Y);
+
+        let ground_col = scene.world().colliders[id.0].unwrap();
+        assert_eq!(ground_col.width, ActOneScene::GROUND_WIDTH);
+        assert_eq!(ground_col.height, ActOneScene::GROUND_HEIGHT);
+        assert!(ground_col.is_solid);
+
+        let ground_physics = scene.world().physics_data[id.0].as_ref().unwrap();
+        assert!(ground_physics.is_static);
+    }
+
+    #[test]
+    fn test_act_one_player_has_physics_and_collider() {
+        let scene = ActOneScene::new();
+        let id = scene.player_id().unwrap();
+        let player_physics = scene.world().physics_data[id.0].as_ref().unwrap();
+        assert!(!player_physics.is_static);
+        assert_eq!(player_physics.gravity_scale, 1.0);
+
+        let player_col = scene.world().colliders[id.0].unwrap();
+        assert_eq!(player_col.width, ActOneScene::PLAYER_WIDTH);
+        assert_eq!(player_col.height, ActOneScene::PLAYER_HEIGHT);
+        assert!(player_col.is_solid);
+    }
+
+    #[test]
+    fn test_act_one_player_rests_on_ground_without_falling() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Simulate 5 seconds of physics (300 frames of 60fps)
+        for _ in 0..300 {
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let pos = scene.world().positions[player_id.0];
+        assert_eq!(pos.x, ActOneScene::PLAYER_SPAWN_X);
+        // Player should still be parked at 166.0 (not fallen through the ground)
+        assert!(
+            (pos.y - ActOneScene::PLAYER_SPAWN_Y).abs() < 1e-3,
+            "Player y position was {}, expected {}",
+            pos.y,
+            ActOneScene::PLAYER_SPAWN_Y
+        );
+        assert_eq!(scene.world().velocities[player_id.0].y, 0.0);
+    }
+
+    #[test]
+    fn test_player_falls_through_without_ground_collider() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Remove the ground collider to simulate absence of ground rectangle
+        let ground_id = scene.ground_id().unwrap();
+        scene.world_mut().alive[ground_id.0] = false;
+
+        // Simulate 3 seconds of physics
+        for _ in 0..180 {
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let pos = scene.world().positions[player_id.0];
+        // Without ground, gravity pulls player down well past spawn y
+        assert!(
+            pos.y > ActOneScene::PLAYER_SPAWN_Y + 50.0,
+            "Player should have fallen through the screen without ground collider"
+        );
+    }
+
+    #[test]
+    fn test_player_dropped_from_above_lands_on_ground() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Start player above the ground in mid-air
+        scene.world_mut().positions[player_id.0].y = 50.0;
+
+        // Simulate 6 seconds of physics until it lands and settles
+        for _ in 0..360 {
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let pos = scene.world().positions[player_id.0];
+        assert!(
+            (pos.y - ActOneScene::PLAYER_SPAWN_Y).abs() < 1e-3,
+            "Dropped player should land and settle at PLAYER_SPAWN_Y ({}), but was at {}",
+            ActOneScene::PLAYER_SPAWN_Y,
+            pos.y
+        );
+        assert_eq!(scene.world().velocities[player_id.0].y, 0.0);
+    }
+
+    #[test]
+    fn test_act_one_arrow_key_up_lifts_player() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        let up_input = PlayerInput {
+            up: true,
+            ..Default::default()
+        };
+
+        // Simulate 1 second of holding Arrow-Key Up
+        for _ in 0..60 {
+            scene.update_input(&up_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let pos = scene.world().positions[player_id.0];
+        // Player should have lifted above ground (pos.y < 166.0)
+        assert!(
+            pos.y < ActOneScene::PLAYER_SPAWN_Y - 10.0,
+            "Player should have lifted off ground, expected y < {}, got {}",
+            ActOneScene::PLAYER_SPAWN_Y - 10.0,
+            pos.y
+        );
+        assert!(scene.world().velocities[player_id.0].y < 0.0);
+    }
+
+    #[test]
+    fn test_act_one_release_thrust_gravity_pulls_down() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        let up_input = PlayerInput {
+            up: true,
+            ..Default::default()
+        };
+
+        // 1. Lift player up for 1 second
+        for _ in 0..60 {
+            scene.update_input(&up_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let lifted_y = scene.world().positions[player_id.0].y;
+        assert!(lifted_y < ActOneScene::PLAYER_SPAWN_Y);
+
+        // 2. Release thrust: simulate 6 seconds of gravity pulling down until landed
+        let no_input = PlayerInput::default();
+        for _ in 0..360 {
+            scene.update_input(&no_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let final_pos = scene.world().positions[player_id.0];
+        // Should have gently landed back on ground at PLAYER_SPAWN_Y
+        assert!(
+            (final_pos.y - ActOneScene::PLAYER_SPAWN_Y).abs() < 1e-3,
+            "Player should have settled back onto ground, expected {}, got {}",
+            ActOneScene::PLAYER_SPAWN_Y,
+            final_pos.y
+        );
+        assert_eq!(scene.world().velocities[player_id.0].y, 0.0);
+    }
+
+    #[test]
+    fn test_act_one_arrow_key_down_descends_faster() {
+        let mut scene_gravity = ActOneScene::new();
+        let mut scene_down = ActOneScene::new();
+
+        let p_grav = scene_gravity.player_id().unwrap();
+        let p_down = scene_down.player_id().unwrap();
+
+        // Put both players in the air at y = 80.0
+        scene_gravity.world_mut().positions[p_grav.0].y = 80.0;
+        scene_down.world_mut().positions[p_down.0].y = 80.0;
+
+        let no_input = PlayerInput::default();
+        let down_input = PlayerInput {
+            down: true,
+            ..Default::default()
+        };
+
+        // Simulate 0.5s
+        for _ in 0..30 {
+            scene_gravity.update_input(&no_input, 1.0 / 60.0);
+            scene_gravity.update_physics(1.0 / 60.0);
+
+            scene_down.update_input(&down_input, 1.0 / 60.0);
+            scene_down.update_physics(1.0 / 60.0);
+        }
+
+        let vel_grav = scene_gravity.world().velocities[p_grav.0].y;
+        let vel_down = scene_down.world().velocities[p_down.0].y;
+
+        assert!(
+            vel_down > vel_grav * 1.8,
+            "Down input descent velocity ({}) should be significantly faster than gravity alone ({})",
+            vel_down,
+            vel_grav
+        );
+        assert!(scene_down.world().positions[p_down.0].y > scene_gravity.world().positions[p_grav.0].y);
     }
 }

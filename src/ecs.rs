@@ -16,6 +16,7 @@ pub struct World {
     pub mortality: Vec<Option<Mortality>>,
     pub weapon_set: Vec<Option<WeaponSet>>,
     pub physics_data: Vec<Option<PhysicsData>>,
+    pub colliders: Vec<Option<Collider>>,
 }
 impl World {
     pub fn new() -> Self {
@@ -33,6 +34,7 @@ impl World {
             mortality: Vec::new(),
             weapon_set: Vec::new(),
             physics_data: Vec::new(),
+            colliders: Vec::new(),
         }
     }
     #[must_use = "call .build() to finalize the entity — dropping the builder leaks the entity slot"]
@@ -60,6 +62,7 @@ impl World {
         self.mortality.push(None);
         self.weapon_set.push(None);
         self.physics_data.push(None);
+        self.colliders.push(None);
 
         Entitybuilder { world: self, id }
     }
@@ -72,6 +75,10 @@ pub struct Entitybuilder<'a> {
 impl<'a> Entitybuilder<'a> {
     pub fn with_physics(self, physics_data: PhysicsData) -> Self {
         self.world.physics_data[self.id] = Some(physics_data);
+        self
+    }
+    pub fn with_collider(self, collider: Collider) -> Self {
+        self.world.colliders[self.id] = Some(collider);
         self
     }
     pub fn with_movement(self, movement_data: MovementData) -> Self {

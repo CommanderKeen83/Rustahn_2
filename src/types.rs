@@ -11,6 +11,8 @@ pub enum EntityType {
     Bullet,
     Fireball,
     Bomb,
+    Ground,
+    Obstacle,
 }
 
 impl EntityType {
@@ -19,6 +21,9 @@ impl EntityType {
     }
     pub fn is_weapon(&self) -> bool {
         matches!(self, EntityType::Bullet | EntityType::Fireball | EntityType::Bomb)
+    }
+    pub fn is_solid_obstacle(&self) -> bool {
+        matches!(self, EntityType::Ground | EntityType::Obstacle)
     }
 }
 
@@ -38,4 +43,5 @@ pub enum SpriteID {
     GameIntroWindowLamp,
     LevelOneBackground,
     ActOneForeground,
+    None,
 }
