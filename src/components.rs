@@ -193,8 +193,8 @@ pub mod player_stats {
     pub const MAX_SPEED: f32 = 12550.0;
     pub const ROTATION_SPEED: f32 = 200.0;
     pub const THRUST_POWER: f32 = 800.0;
-    pub const LIFT_THRUST: f32 = 180.0;
-    pub const DESCENT_THRUST: f32 = 160.0;
+    pub const LIFT_THRUST: f32 = 35.0;
+    pub const DESCENT_THRUST: f32 = 75.0;
 }
 
 pub mod world_stats {

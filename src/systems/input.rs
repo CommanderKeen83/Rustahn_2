@@ -21,14 +21,11 @@ impl PlayerInput {
 }
 
 /// Updates player-controlled entities based on input:
-/// - Arrow-Key Up applies upward thrust (counteracting gravity and lifting slowly).
-/// - Arrow-Key Down applies downward thrust (descending faster).
-/// - When no vertical keys are pressed, gravity pulls the aircraft down slowly.
-pub fn update(world: &mut World, input: &PlayerInput, dt: f32) {
-    if dt <= 0.0 {
-        return;
-    }
-
+/// - Arrow-Key Up sets vertical velocity to lift upward slowly (-thrust_speed).
+/// - Arrow-Key Down sets vertical velocity to descend faster (+descent_speed).
+/// - When neither vertical key is pressed, existing velocity is preserved so downstream
+///   systems (such as physics applying gravity) can govern motion.
+pub fn update(world: &mut World, input: &PlayerInput, _dt: f32) {
     for i in 0..world.next_entity_id {
         if !world.alive[i] || world.tags[i] != EntityType::Player {
             continue;
@@ -40,13 +37,9 @@ pub fn update(world: &mut World, input: &PlayerInput, dt: f32) {
         };
 
         if input.up {
-            // Apply upward thrust (counteracts gravity and accelerates upward)
-            world.velocities[i].y -= movement.thrust_speed * dt;
-        }
-
-        if input.down {
-            // Apply downward thrust (accelerates downward faster)
-            world.velocities[i].y += movement.descent_speed * dt;
+            world.velocities[i].y = -movement.thrust_speed;
+        } else if input.down {
+            world.velocities[i].y = movement.descent_speed;
         }
     }
 }
@@ -61,7 +54,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_input_up_lifts_player() {
+    fn test_input_up_sets_upward_velocity() {
         let mut world = World::new();
         let player = world
             .spawn(
@@ -77,7 +70,6 @@ mod tests {
                 player_stats::MAX_SPEED,
                 player_stats::ROTATION_SPEED,
             ))
-            .with_physics(PhysicsData::dynamic())
             .build();
 
         let input = PlayerInput {
@@ -87,29 +79,15 @@ mod tests {
             right: false,
         };
 
-        // Run 1 second of input and physics
-        for _ in 0..60 {
-            update(&mut world, &input, 1.0 / 60.0);
-            crate::systems::physics::update(&mut world, 1.0 / 60.0);
-        }
+        update(&mut world, &input, 1.0 / 60.0);
 
-        // Upward thrust (180.0) overcomes gravity (80.0), resulting in negative velocity.y (upward)
-        assert!(
-            world.velocities[player.0].y < -20.0,
-            "Player should have negative vertical velocity (moving up), but got {}",
-            world.velocities[player.0].y
-        );
-        assert!(
-            world.positions[player.0].y < 100.0,
-            "Player position should have lifted above starting y=100, but was {}",
-            world.positions[player.0].y
-        );
+        assert_eq!(world.velocities[player.0].y, -player_stats::LIFT_THRUST);
     }
 
     #[test]
-    fn test_input_down_descends_faster_than_gravity() {
-        let mut world_gravity_only = World::new();
-        let p_gravity = world_gravity_only
+    fn test_input_down_sets_downward_velocity() {
+        let mut world = World::new();
+        let player = world
             .spawn(
                 EntityType::Player,
                 Vector2::new(100.0, 100.0),
@@ -123,52 +101,44 @@ mod tests {
                 player_stats::MAX_SPEED,
                 player_stats::ROTATION_SPEED,
             ))
-            .with_physics(PhysicsData::dynamic())
             .build();
 
-        let mut world_down = World::new();
-        let p_down = world_down
-            .spawn(
-                EntityType::Player,
-                Vector2::new(100.0, 100.0),
-                Vector2::new(0.0, 0.0),
-                0.0,
-                true,
-                SpriteID::Player,
-            )
-            .with_movement(MovementData::new(
-                player_stats::LIFT_THRUST,
-                player_stats::MAX_SPEED,
-                player_stats::ROTATION_SPEED,
-            ))
-            .with_physics(PhysicsData::dynamic())
-            .build();
-
-        let no_input = PlayerInput::default();
-        let down_input = PlayerInput {
+        let input = PlayerInput {
+            up: false,
             down: true,
-            ..Default::default()
+            left: false,
+            right: false,
         };
 
-        // Run 1 second
-        for _ in 0..60 {
-            update(&mut world_gravity_only, &no_input, 1.0 / 60.0);
-            crate::systems::physics::update(&mut world_gravity_only, 1.0 / 60.0);
+        update(&mut world, &input, 1.0 / 60.0);
 
-            update(&mut world_down, &down_input, 1.0 / 60.0);
-            crate::systems::physics::update(&mut world_down, 1.0 / 60.0);
-        }
+        assert_eq!(world.velocities[player.0].y, player_stats::DESCENT_THRUST);
+    }
 
-        let vel_gravity = world_gravity_only.velocities[p_gravity.0].y;
-        let vel_down = world_down.velocities[p_down.0].y;
+    #[test]
+    fn test_no_input_preserves_existing_velocity() {
+        let mut world = World::new();
+        let player = world
+            .spawn(
+                EntityType::Player,
+                Vector2::new(100.0, 100.0),
+                Vector2::new(0.0, 15.0),
+                0.0,
+                true,
+                SpriteID::Player,
+            )
+            .with_movement(MovementData::new(
+                player_stats::LIFT_THRUST,
+                player_stats::MAX_SPEED,
+                player_stats::ROTATION_SPEED,
+            ))
+            .build();
 
-        // Down input should produce significantly faster downward velocity than gravity alone
-        assert!(
-            vel_down > vel_gravity * 2.0,
-            "Down input velocity ({}) should be more than 2x gravity velocity ({})",
-            vel_down,
-            vel_gravity
-        );
-        assert!(world_down.positions[p_down.0].y > world_gravity_only.positions[p_gravity.0].y);
+        let input = PlayerInput::default();
+
+        update(&mut world, &input, 1.0 / 60.0);
+
+        // Input system does not overwrite velocity when no key is pressed
+        assert_eq!(world.velocities[player.0].y, 15.0);
     }
 }
