@@ -72,7 +72,9 @@ pub struct WeaponSet {
     pub weapon: WeaponType,
 }
 
+use crate::types::EntityType;
 use sola_raylib::prelude::*;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Collider {
@@ -131,21 +133,36 @@ impl Collider {
     }
 }
 
+/// Standard preset profiles for entity physics weight and falling dynamics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PhysicsPreset {
+    Light,
+    Normal,
+    Heavy,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhysicsData {
     pub gravity_scale: f32,
     pub drag: f32,
     pub is_static: bool,
     pub mass: f32,
+    pub max_fall_speed: Option<f32>,
 }
 
 impl PhysicsData {
+    pub const LIGHT_GRAVITY_SCALE: f32 = 0.2;
+    pub const NORMAL_GRAVITY_SCALE: f32 = 1.0;
+    pub const HEAVY_GRAVITY_SCALE: f32 = 1.5;
+    pub const LIGHT_MAX_FALL_SPEED: f32 = 25.0;
+
     pub fn new() -> Self {
         Self {
             gravity_scale: 1.0,
             drag: world_stats::DRAG,
             is_static: false,
             mass: 1.0,
+            max_fall_speed: None,
         }
     }
 
@@ -159,11 +176,22 @@ impl PhysicsData {
             drag: 0.0,
             is_static: true,
             mass: 0.0,
+            max_fall_speed: None,
         }
     }
 
     pub fn with_gravity(mut self, scale: f32) -> Self {
         self.gravity_scale = scale;
+        self
+    }
+
+    pub fn with_gravity_scale(mut self, scale: f32) -> Self {
+        self.gravity_scale = scale;
+        self
+    }
+
+    pub fn with_max_fall_speed(mut self, max_speed: f32) -> Self {
+        self.max_fall_speed = Some(max_speed);
         self
     }
 
@@ -176,11 +204,211 @@ impl PhysicsData {
         self.mass = mass;
         self
     }
+
+    /// Creates a physics component based on standard preset profiles:
+    /// - `Light`: `gravity_scale = 0.2`, `max_fall_speed = Some(25.0)` (floats gently)
+    /// - `Normal`: `gravity_scale = 1.0`, `max_fall_speed = None` (standard fall)
+    /// - `Heavy`: `gravity_scale = 1.5`, `max_fall_speed = None` (drops rapidly)
+    /// Reads from configuration file overrides if present, otherwise uses default constants.
+    /// Creates a physics component based on standard preset profiles:
+    /// - `Light`: `gravity_scale = LIGHT_GRAVITY_SCALE` (0.2), `max_fall_speed = Some(25.0)` (floats gently)
+    /// - `Normal`: `gravity_scale = NORMAL_GRAVITY_SCALE` (1.0), `max_fall_speed = None` (standard fall)
+    /// - `Heavy`: `gravity_scale = HEAVY_GRAVITY_SCALE` (1.5), `max_fall_speed = None` (drops rapidly)
+    pub fn preset(preset: PhysicsPreset) -> Self {
+        let config = PhysicsConfig::global();
+        Self::from_config(&config, preset)
+    }
+
+    pub fn light() -> Self {
+        Self::preset(PhysicsPreset::Light)
+    }
+
+    pub fn normal() -> Self {
+        Self::preset(PhysicsPreset::Normal)
+    }
+
+    pub fn heavy() -> Self {
+        Self::preset(PhysicsPreset::Heavy)
+    }
+
+    /// Creates a physics component from a dynamic `PhysicsConfig` (e.g. loaded from `physics.cfg`).
+    pub fn from_config(config: &PhysicsConfig, preset: PhysicsPreset) -> Self {
+        match preset {
+            PhysicsPreset::Light => {
+                let mut data = Self::new().with_gravity_scale(config.light_gravity_scale);
+                if let Some(spd) = config.light_max_fall_speed {
+                    data = data.with_max_fall_speed(spd);
+                }
+                data
+            }
+            PhysicsPreset::Normal => {
+                let mut data = Self::new().with_gravity_scale(config.normal_gravity_scale);
+                if let Some(spd) = config.normal_max_fall_speed {
+                    data = data.with_max_fall_speed(spd);
+                }
+                data
+            }
+            PhysicsPreset::Heavy => {
+                let mut data = Self::new().with_gravity_scale(config.heavy_gravity_scale);
+                if let Some(spd) = config.heavy_max_fall_speed {
+                    data = data.with_max_fall_speed(spd);
+                }
+                data
+            }
+        }
+    }
+
+    /// Obtains a physics component preset for a given entity type, checking
+    /// for configuration file overrides before falling back to default type presets.
+    pub fn for_entity_type(tag: EntityType) -> Self {
+        let config = PhysicsConfig::global();
+        if let Some(custom) = config.get_for_type(tag) {
+            return custom;
+        }
+        match tag {
+            EntityType::Ground | EntityType::Obstacle => Self::static_body(),
+            EntityType::Rabbit => Self::light(),
+            EntityType::Bomb => Self::heavy(),
+            _ => Self::dynamic(),
+        }
+    }
 }
 
 impl Default for PhysicsData {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Dynamic configuration for physics presets and per-entity-type settings.
+/// Can be populated from file (e.g. `resources/physics.cfg`) or string.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PhysicsConfig {
+    pub light_gravity_scale: f32,
+    pub light_max_fall_speed: Option<f32>,
+    pub normal_gravity_scale: f32,
+    pub normal_max_fall_speed: Option<f32>,
+    pub heavy_gravity_scale: f32,
+    pub heavy_max_fall_speed: Option<f32>,
+    pub type_overrides: HashMap<String, (f32, Option<f32>)>,
+}
+
+impl Default for PhysicsConfig {
+    fn default() -> Self {
+        Self {
+            light_gravity_scale: PhysicsData::LIGHT_GRAVITY_SCALE,
+            light_max_fall_speed: Some(PhysicsData::LIGHT_MAX_FALL_SPEED),
+            normal_gravity_scale: PhysicsData::NORMAL_GRAVITY_SCALE,
+            normal_max_fall_speed: None,
+            heavy_gravity_scale: PhysicsData::HEAVY_GRAVITY_SCALE,
+            heavy_max_fall_speed: None,
+            type_overrides: HashMap::new(),
+        }
+    }
+}
+
+impl PhysicsConfig {
+    pub fn parse_str(content: &str) -> Self {
+        let mut config = Self::default();
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with(';') || line.starts_with('[') {
+                continue;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                match key {
+                    "light.gravity_scale" => {
+                        if let Ok(v) = value.parse::<f32>() {
+                            config.light_gravity_scale = v;
+                        }
+                    }
+                    "light.max_fall_speed" => {
+                        if value.is_empty() || value.eq_ignore_ascii_case("none") {
+                            config.light_max_fall_speed = None;
+                        } else if let Ok(v) = value.parse::<f32>() {
+                            config.light_max_fall_speed = Some(v);
+                        }
+                    }
+                    "normal.gravity_scale" => {
+                        if let Ok(v) = value.parse::<f32>() {
+                            config.normal_gravity_scale = v;
+                        }
+                    }
+                    "normal.max_fall_speed" => {
+                        if value.is_empty() || value.eq_ignore_ascii_case("none") {
+                            config.normal_max_fall_speed = None;
+                        } else if let Ok(v) = value.parse::<f32>() {
+                            config.normal_max_fall_speed = Some(v);
+                        }
+                    }
+                    "heavy.gravity_scale" => {
+                        if let Ok(v) = value.parse::<f32>() {
+                            config.heavy_gravity_scale = v;
+                        }
+                    }
+                    "heavy.max_fall_speed" => {
+                        if value.is_empty() || value.eq_ignore_ascii_case("none") {
+                            config.heavy_max_fall_speed = None;
+                        } else if let Ok(v) = value.parse::<f32>() {
+                            config.heavy_max_fall_speed = Some(v);
+                        }
+                    }
+                    other => {
+                        if let Some((entity_name, prop)) = other.split_once('.') {
+                            let entry = config
+                                .type_overrides
+                                .entry(entity_name.to_string())
+                                .or_insert((1.0, None));
+                            match prop {
+                                "gravity_scale" => {
+                                    if let Ok(v) = value.parse::<f32>() {
+                                        entry.0 = v;
+                                    }
+                                }
+                                "max_fall_speed" => {
+                                    if value.is_empty() || value.eq_ignore_ascii_case("none") {
+                                        entry.1 = None;
+                                    } else if let Ok(v) = value.parse::<f32>() {
+                                        entry.1 = Some(v);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        config
+    }
+
+    pub fn load_from_file(path: &str) -> Option<Self> {
+        std::fs::read_to_string(path).ok().map(|content| Self::parse_str(&content))
+    }
+
+    pub fn global() -> Self {
+        if let Some(cfg) = Self::load_from_file("resources/physics.cfg") {
+            return cfg;
+        }
+        if let Some(cfg) = Self::load_from_file("physics.cfg") {
+            return cfg;
+        }
+        Self::default()
+    }
+
+    pub fn get_for_type(&self, tag: EntityType) -> Option<PhysicsData> {
+        let name = format!("{:?}", tag);
+        if let Some(&(scale, max_fall)) = self.type_overrides.get(&name) {
+            let mut data = PhysicsData::dynamic().with_gravity_scale(scale);
+            if let Some(spd) = max_fall {
+                data = data.with_max_fall_speed(spd);
+            }
+            Some(data)
+        } else {
+            None
+        }
     }
 }
 
@@ -200,4 +428,6 @@ pub mod player_stats {
 pub mod world_stats {
     pub const DRAG: f32 = 3.0;
     pub const GRAVITY: f32 = 80.0;
+    /// Baseline global downward pull (80.0), referenced as World::Drag in specifications.
+    pub const BASELINE_GRAVITY: f32 = 80.0;
 }

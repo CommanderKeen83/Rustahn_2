@@ -19,6 +19,15 @@ pub struct World {
     pub colliders: Vec<Option<Collider>>,
 }
 impl World {
+    /// Baseline gravity (downward pull) applied globally to dynamic entities with physics (80.0).
+    pub const GRAVITY: f32 = world_stats::GRAVITY;
+    /// Baseline downward drag / gravity multiplier (alias for `World::GRAVITY`, 80.0).
+    pub const DRAG: f32 = world_stats::GRAVITY;
+    #[allow(non_upper_case_globals)]
+    pub const Drag: f32 = world_stats::GRAVITY;
+    #[allow(non_upper_case_globals)]
+    pub const Gravity: f32 = world_stats::GRAVITY;
+
     pub fn new() -> Self {
         Self {
             next_entity_id: 0,
@@ -75,6 +84,22 @@ pub struct Entitybuilder<'a> {
 impl<'a> Entitybuilder<'a> {
     pub fn with_physics(self, physics_data: PhysicsData) -> Self {
         self.world.physics_data[self.id] = Some(physics_data);
+        self
+    }
+    pub fn with_gravity_scale(self, scale: f32) -> Self {
+        let mut physics = self.world.physics_data[self.id].take().unwrap_or_else(PhysicsData::dynamic);
+        physics.gravity_scale = scale;
+        self.world.physics_data[self.id] = Some(physics);
+        self
+    }
+    pub fn with_max_fall_speed(self, max_speed: f32) -> Self {
+        let mut physics = self.world.physics_data[self.id].take().unwrap_or_else(PhysicsData::dynamic);
+        physics.max_fall_speed = Some(max_speed);
+        self.world.physics_data[self.id] = Some(physics);
+        self
+    }
+    pub fn with_physics_preset(self, preset: PhysicsPreset) -> Self {
+        self.world.physics_data[self.id] = Some(PhysicsData::preset(preset));
         self
     }
     pub fn with_collider(self, collider: Collider) -> Self {

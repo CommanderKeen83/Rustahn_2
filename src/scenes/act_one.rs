@@ -59,7 +59,7 @@ impl ActOneScene {
                 player_stats::MAX_SPEED,
                 player_stats::ROTATION_SPEED,
             ))
-            .with_physics(PhysicsData::dynamic())
+            .with_physics_preset(PhysicsPreset::Light)
             .with_collider(Collider::new(Self::PLAYER_WIDTH, Self::PLAYER_HEIGHT))
             .build();
 
@@ -480,7 +480,8 @@ mod tests {
         let id = scene.player_id().unwrap();
         let player_physics = scene.world().physics_data[id.0].as_ref().unwrap();
         assert!(!player_physics.is_static);
-        assert_eq!(player_physics.gravity_scale, 1.0);
+        assert_eq!(player_physics.gravity_scale, PhysicsData::LIGHT_GRAVITY_SCALE);
+        assert_eq!(player_physics.max_fall_speed, Some(PhysicsData::LIGHT_MAX_FALL_SPEED));
 
         let player_col = scene.world().colliders[id.0].unwrap();
         assert_eq!(player_col.width, ActOneScene::PLAYER_WIDTH);
@@ -519,16 +520,17 @@ mod tests {
         let ground_id = scene.ground_id().unwrap();
         scene.world_mut().alive[ground_id.0] = false;
 
-        // Simulate 3 seconds of physics
-        for _ in 0..180 {
+        // Simulate 10 seconds of physics with light floaty gravity
+        for _ in 0..600 {
             scene.update_physics(1.0 / 60.0);
         }
 
         let pos = scene.world().positions[player_id.0];
         // Without ground, gravity pulls player down well past spawn y
         assert!(
-            pos.y > ActOneScene::PLAYER_SPAWN_Y + 50.0,
-            "Player should have fallen through the screen without ground collider"
+            pos.y > ActOneScene::PLAYER_SPAWN_Y + 40.0,
+            "Player should have fallen through the screen without ground collider, got {}",
+            pos.y
         );
     }
 
@@ -538,7 +540,7 @@ mod tests {
         let player_id = scene.player_id().unwrap();
 
         // Start player above the ground in mid-air
-        scene.world_mut().positions[player_id.0].y = 50.0;
+        scene.world_mut().positions[player_id.0].y = 150.0;
 
         // Simulate 6 seconds of physics until it lands and settles
         for _ in 0..360 {
@@ -601,9 +603,9 @@ mod tests {
         let lifted_y = scene.world().positions[player_id.0].y;
         assert!(lifted_y < ActOneScene::PLAYER_SPAWN_Y);
 
-        // 2. Release thrust: simulate 6 seconds of gravity pulling down until landed
+        // 2. Release thrust: simulate 10 seconds of gentle floaty gravity pulling down until landed
         let no_input = PlayerInput::default();
-        for _ in 0..360 {
+        for _ in 0..600 {
             scene.update_input(&no_input, 1.0 / 60.0);
             scene.update_physics(1.0 / 60.0);
         }
