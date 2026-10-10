@@ -1,6 +1,7 @@
 use crate::prelude::*;
+use crate::scenes::act_two::ActTwoScene;
 use crate::scenes::asteroid_field::{Asteroid, AsteroidField};
-use crate::scenes::{Scene, SceneAction};
+use crate::scenes::{Scene, SceneAction, SceneTag};
 use crate::systems::collision;
 use sola_raylib::prelude::*;
 
@@ -164,6 +165,33 @@ impl ActOneScene {
     pub fn update_input(&mut self, input: &PlayerInput, dt: f32) {
         crate::systems::input::update(&mut self.world, input, dt);
     }
+
+    /// Returns true when the player spaceship has flown completely outside
+    /// of the top of the camera view (y-axis < 0, where the bottom edge of the ship
+    /// is above the camera viewport top boundary).
+    pub fn is_player_outside_top(&self) -> bool {
+        if let Some(player_id) = self.player_id {
+            if self.world.alive[player_id.0] {
+                let pos = self.world.positions[player_id.0];
+                let half_height = self
+                    .world
+                    .colliders[player_id.0]
+                    .map_or(Self::PLAYER_HEIGHT * 0.5, |c| c.height * 0.5);
+                let bottom_y = pos.y + half_height;
+                return bottom_y < self.camera.y();
+            }
+        }
+        false
+    }
+
+    /// Checks if a transition should occur to Act Two.
+    pub fn check_transition(&self) -> Option<SceneAction> {
+        if self.is_player_outside_top() {
+            Some(SceneAction::Switch(Box::new(ActTwoScene::new())))
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for ActOneScene {
@@ -215,7 +243,19 @@ impl Scene for ActOneScene {
             // Gameplay hooks will start here
         }
 
-        None
+        self.check_transition()
+    }
+
+    fn tag(&self) -> Option<SceneTag> {
+        Some(SceneTag::ActOne)
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 
     fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
@@ -716,5 +756,121 @@ mod tests {
             scene.world().rotations[player_id.0], 0.0,
             "Holding down while on ground must not tilt downward"
         );
+    }
+
+    #[test]
+    fn test_act_one_player_outside_top_detection() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // 1. At spawn on ground, player is not outside the top
+        assert!(!scene.is_player_outside_top());
+
+        // 2. In mid-air, player is not outside the top
+        scene.world_mut().positions[player_id.0].y = 50.0;
+        assert!(!scene.is_player_outside_top());
+
+        // 3. At y = 0.0, the spaceship center is at the top edge, but bottom half (17px) is still visible
+        scene.world_mut().positions[player_id.0].y = 0.0;
+        assert!(!scene.is_player_outside_top());
+
+        // 4. At y = -17.0, bottom edge is exactly 0.0 (still not completely outside)
+        let half_h = ActOneScene::PLAYER_HEIGHT * 0.5;
+        scene.world_mut().positions[player_id.0].y = -half_h;
+        assert!(!scene.is_player_outside_top());
+
+        // 5. At y = -17.1 (or -18.0), bottom edge is < 0.0: completely outside the top of the camera view
+        scene.world_mut().positions[player_id.0].y = -(half_h + 0.5);
+        assert!(scene.is_player_outside_top());
+
+        // 6. Well past the top
+        scene.world_mut().positions[player_id.0].y = -100.0;
+        assert!(scene.is_player_outside_top());
+    }
+
+    #[test]
+    fn test_act_one_check_transition_to_act_two() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Initially no transition
+        assert!(scene.check_transition().is_none());
+
+        // Move player completely outside top of camera view
+        let half_h = ActOneScene::PLAYER_HEIGHT * 0.5;
+        scene.world_mut().positions[player_id.0].y = -(half_h + 1.0);
+
+        let action = scene.check_transition();
+        assert!(action.is_some());
+        match action.unwrap() {
+            SceneAction::Switch(next_scene) => {
+                assert_eq!(next_scene.tag(), Some(SceneTag::ActTwo));
+            }
+        }
+    }
+
+    #[test]
+    fn test_act_one_flight_transition_through_scene_manager() {
+        let scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        let mut scene_manager = SceneManager::new(Box::new(scene));
+        assert_eq!(scene_manager.current_tag(), Some(SceneTag::ActOne));
+
+        // Teleport player completely outside top of view in current scene
+        {
+            let current = scene_manager.current_scene_mut();
+            let act_one = current.as_any_mut().downcast_mut::<ActOneScene>().unwrap();
+            act_one.world_mut().positions[player_id.0].y = -50.0;
+            assert!(act_one.is_player_outside_top());
+        }
+
+        // Trigger transition via SceneAction
+        let action = {
+            let current = scene_manager.current_scene_mut();
+            let act_one = current.as_any_mut().downcast_mut::<ActOneScene>().unwrap();
+            act_one.check_transition()
+        };
+
+        if let Some(SceneAction::Switch(next)) = action {
+            scene_manager.switch_scene(next);
+        }
+
+        assert_eq!(scene_manager.current_tag(), Some(SceneTag::ActTwo));
+    }
+
+    #[test]
+    fn test_act_one_continuous_up_flight_triggers_act_two() {
+        let mut scene = ActOneScene::new();
+        let up_input = PlayerInput {
+            up: true,
+            ..Default::default()
+        };
+
+        // Initially not outside
+        assert!(!scene.is_player_outside_top());
+        assert!(scene.check_transition().is_none());
+
+        // Simulate flight upwards (60 FPS, dt = 1/60s).
+        // 166.0 px down to -17.5 px takes ~4.6 seconds (~276 frames).
+        // Run for 400 frames (~6.6 seconds) to ensure the spaceship has completely exited the top.
+        for _ in 0..400 {
+            scene.update_input(&up_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        assert!(
+            scene.is_player_outside_top(),
+            "Spaceship should have flown completely outside top of camera view, player pos was {:?}",
+            scene.player_position()
+        );
+
+        let action = scene.check_transition();
+        assert!(action.is_some(), "check_transition should return Some(SceneAction::Switch)");
+        match action.unwrap() {
+            SceneAction::Switch(next) => {
+                assert_eq!(next.tag(), Some(SceneTag::ActTwo));
+            }
+        }
     }
 }

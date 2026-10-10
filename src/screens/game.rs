@@ -55,6 +55,14 @@ mod tests {
     #[test]
     fn test_game_scene_initialization() {
         let game = Game::new();
-        let _ = game.scene_manager();
+        assert_eq!(game.scene_manager().current_tag(), Some(SceneTag::ActOne));
+    }
+
+    #[test]
+    fn test_game_scene_switch_to_act_two() {
+        let mut game = Game::new();
+        game.scene_manager_mut()
+            .switch_scene(Box::new(ActTwoScene::new()));
+        assert_eq!(game.scene_manager().current_tag(), Some(SceneTag::ActTwo));
     }
 }

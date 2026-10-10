@@ -5,7 +5,10 @@ pub use crate::components::*;
 pub use crate::ecs::{self, World};
 pub use crate::gamestate::Gamestate;
 pub use crate::resources::ResourceManager;
-pub use crate::scenes::{self, Asteroid, AsteroidField, Scene, SceneAction, SceneManager};
+pub use crate::scenes::{
+    self, ActOne, ActOneScene, ActTwo, ActTwoScene, Asteroid, AsteroidField, Scene, SceneAction,
+    SceneManager, SceneTag,
+};
 pub use crate::screens;
 pub use crate::statemanager::*;
 pub use crate::systems::collision::CollisionEvent;
