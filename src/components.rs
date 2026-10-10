@@ -4,6 +4,7 @@ pub struct MovementData {
     pub max_speed: f32,
     pub rotation_speed: f32,
     pub descent_speed: f32,
+    pub tilt_angle: f32,
 }
 impl MovementData {
     pub fn new(thrust_speed: f32, max_speed: f32, rotation_speed: f32) -> Self {
@@ -12,11 +13,17 @@ impl MovementData {
             max_speed,
             rotation_speed,
             descent_speed: player_stats::DESCENT_THRUST,
+            tilt_angle: player_stats::TILT_ANGLE,
         }
     }
 
     pub fn with_descent(mut self, descent_speed: f32) -> Self {
         self.descent_speed = descent_speed;
+        self
+    }
+
+    pub fn with_tilt_angle(mut self, tilt_angle: f32) -> Self {
+        self.tilt_angle = tilt_angle;
         self
     }
 }
@@ -419,10 +426,11 @@ pub mod fireball_stats {
 
 pub mod player_stats {
     pub const MAX_SPEED: f32 = 12550.0;
-    pub const ROTATION_SPEED: f32 = 200.0;
+    pub const ROTATION_SPEED: f32 = 45.0;
     pub const THRUST_POWER: f32 = 800.0;
     pub const LIFT_THRUST: f32 = 35.0;
     pub const DESCENT_THRUST: f32 = 75.0;
+    pub const TILT_ANGLE: f32 = 6.0;
 }
 
 pub mod world_stats {

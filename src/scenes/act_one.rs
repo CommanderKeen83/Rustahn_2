@@ -211,19 +211,6 @@ impl Scene for ActOneScene {
 
         self.update_physics(ctx.dt);
 
-        // Ceiling clamp so spaceship cannot fly off top of screen
-        if let Some(player_id) = self.player_id {
-            if self.world.alive[player_id.0] {
-                let min_y = Self::PLAYER_HEIGHT * 0.5;
-                if self.world.positions[player_id.0].y < min_y {
-                    self.world.positions[player_id.0].y = min_y;
-                    if self.world.velocities[player_id.0].y < 0.0 {
-                        self.world.velocities[player_id.0].y = 0.0;
-                    }
-                }
-            }
-        }
-
         if self.is_pan_finished() {
             // Gameplay hooks will start here
         }
@@ -658,5 +645,76 @@ mod tests {
             vel_grav
         );
         assert!(scene_down.world().positions[p_down.0].y > scene_gravity.world().positions[p_grav.0].y);
+    }
+
+    #[test]
+    fn test_act_one_arrow_keys_tilt_spaceship() {
+        let mut scene = ActOneScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // 1. Initial horizontal balanced mode is 0.0
+        assert_eq!(scene.world().rotations[player_id.0], 0.0);
+
+        let down_input = PlayerInput {
+            down: true,
+            ..Default::default()
+        };
+
+        // When resting on the ground / bottom, Arrow-Down does NOT tilt downward
+        for _ in 0..10 {
+            scene.update_input(&down_input, 1.0 / 60.0);
+        }
+        assert_eq!(
+            scene.world().rotations[player_id.0], 0.0,
+            "Downward tilt should not occur when collision prevents flying down"
+        );
+
+        let up_input = PlayerInput {
+            up: true,
+            ..Default::default()
+        };
+
+        // 2. Arrow-Up: spaceship tilts upwards on right side (-TILT_ANGLE) and lifts off into the air
+        for _ in 0..60 {
+            scene.update_input(&up_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+        assert_eq!(scene.world().rotations[player_id.0], -player_stats::TILT_ANGLE);
+        assert!(scene.world().positions[player_id.0].y < ActOneScene::PLAYER_SPAWN_Y - 10.0);
+
+        // 3. Releasing direction in the air: returns to horizontally balanced mode (0.0)
+        let no_input = PlayerInput::default();
+        for _ in 0..10 {
+            scene.update_input(&no_input, 1.0 / 60.0);
+        }
+        assert_eq!(scene.world().rotations[player_id.0], 0.0);
+
+        // 4. In mid-air: Arrow-Down DOES tilt downward (+TILT_ANGLE)
+        for _ in 0..10 {
+            scene.update_input(&down_input, 1.0 / 60.0);
+        }
+        assert_eq!(
+            scene.world().rotations[player_id.0],
+            player_stats::TILT_ANGLE,
+            "In mid-air, downward tilt should occur"
+        );
+
+        // 5. Land on ground: downward tilt levels out to 0.0
+        scene.world_mut().positions[player_id.0].y = ActOneScene::PLAYER_SPAWN_Y;
+        scene.update_physics(1.0 / 60.0);
+        assert_eq!(
+            scene.world().rotations[player_id.0], 0.0,
+            "Landing on bottom should level out downward tilt"
+        );
+
+        // Holding Arrow-Down on the ground again does NOT tilt downward
+        for _ in 0..10 {
+            scene.update_input(&down_input, 1.0 / 60.0);
+            scene.update_physics(1.0 / 60.0);
+        }
+        assert_eq!(
+            scene.world().rotations[player_id.0], 0.0,
+            "Holding down while on ground must not tilt downward"
+        );
     }
 }
