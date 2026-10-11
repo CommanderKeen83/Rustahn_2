@@ -52,6 +52,7 @@ pub struct ActTwoScene {
     pub camera: GameCamera,
     max_thrust_duration: f32,
     thrust_fuel: f32,
+    thrust_recharge_rate: f32,
     is_thrusting: bool,
     thrust_activation_delay: f32,
     thrust_delay_timer: f32,
@@ -90,7 +91,7 @@ impl ActTwoScene {
     pub const PLAYER_MOVE_SPEED: f32 = 80.0;
 
     /// Upward vertical impulse applied when jumping.
-    pub const PLAYER_JUMP_IMPULSE: f32 = 260.0;
+    pub const PLAYER_JUMP_IMPULSE: f32 = 300.0;
 
     /// Default maximum thruster duration in seconds (upgradeable).
     pub const DEFAULT_MAX_THRUST_DURATION: f32 = 1.5;
@@ -106,6 +107,9 @@ impl ActTwoScene {
     /// Default delay (in seconds) before thruster activation when Space is pressed continuously from a ground jump.
     /// Prevents standard jumps from consuming thruster fuel during the initial upward trajectory.
     pub const DEFAULT_THRUST_ACTIVATION_DELAY: f32 = 0.25;
+
+    /// Default thruster recharge rate in fuel units (seconds) per second while grounded (e.g. 0.5 = 3.0s for full recharge from 0).
+    pub const DEFAULT_THRUST_RECHARGE_RATE: f32 = 0.5;
 
     pub fn new() -> Self {
         let mut world = World::new();
@@ -160,6 +164,7 @@ impl ActTwoScene {
             camera: GameCamera::new(),
             max_thrust_duration: Self::DEFAULT_MAX_THRUST_DURATION,
             thrust_fuel: Self::DEFAULT_MAX_THRUST_DURATION,
+            thrust_recharge_rate: Self::DEFAULT_THRUST_RECHARGE_RATE,
             is_thrusting: false,
             thrust_activation_delay: Self::DEFAULT_THRUST_ACTIVATION_DELAY,
             thrust_delay_timer: 0.0,
@@ -249,6 +254,16 @@ impl ActTwoScene {
     /// Directly sets current thruster fuel in seconds.
     pub fn set_thrust_fuel(&mut self, fuel: f32) {
         self.thrust_fuel = fuel.clamp(0.0, self.max_thrust_duration);
+    }
+
+    /// Thruster recharge rate in fuel units (seconds) per second when resting on ground or platform.
+    pub fn thrust_recharge_rate(&self) -> f32 {
+        self.thrust_recharge_rate
+    }
+
+    /// Sets the thruster recharge rate in fuel units (seconds) per second.
+    pub fn set_thrust_recharge_rate(&mut self, rate: f32) {
+        self.thrust_recharge_rate = rate.max(0.0);
     }
 
     /// Returns true if the thrusters are actively firing this frame.
@@ -375,9 +390,11 @@ impl ActTwoScene {
         collision::update(&mut self.world, dt);
 
         if player_id.0 < self.world.next_entity_id && self.world.alive[player_id.0] {
-            // Recharge thruster fuel and reset delay when resting on the solid floor
+            // Slowly recharge thruster fuel and reset delay when resting on solid ground or platform
             if collision::is_blocked_down(&self.world, player_id.0) {
-                self.thrust_fuel = self.max_thrust_duration;
+                if self.thrust_fuel < self.max_thrust_duration && dt > 0.0 {
+                    self.thrust_fuel = (self.thrust_fuel + self.thrust_recharge_rate * dt).min(self.max_thrust_duration);
+                }
                 self.is_thrusting = false;
                 self.thrust_delay_timer = 0.0;
             }
@@ -560,6 +577,7 @@ mod tests {
         assert!(!scene.is_thrusting());
         assert_eq!(scene.max_thrust_duration(), ActTwoScene::DEFAULT_MAX_THRUST_DURATION);
         assert_eq!(scene.thrust_fuel(), ActTwoScene::DEFAULT_MAX_THRUST_DURATION);
+        assert_eq!(scene.thrust_recharge_rate(), ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE);
 
         let floor_id = scene.floor_id().expect("Floor entity should exist");
         assert_eq!(scene.world().tags[floor_id.0], EntityType::Ground);
@@ -899,6 +917,98 @@ mod tests {
 
         assert!(scene.is_player_grounded());
         assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration(), "Fuel should fully recharge upon landing");
+    }
+
+    #[test]
+    fn test_thruster_recharges_slowly_on_ground_and_platform() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Settle player on ground
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+        assert!(scene.is_player_grounded());
+
+        // Set fuel to a low amount (0.2s) to test gradual replenishment
+        scene.set_thrust_fuel(0.2);
+        assert_eq!(scene.thrust_fuel(), 0.2);
+
+        // Step physics forward by 1 frame (0.016s)
+        scene.update_physics(0.016);
+        let expected_1_frame = 0.2 + ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE * 0.016;
+        assert!(
+            (scene.thrust_fuel() - expected_1_frame).abs() < 1e-3,
+            "Fuel should have increased gradually by rate * dt ({}), but was {}",
+            expected_1_frame,
+            scene.thrust_fuel()
+        );
+        // It must NOT instantly jump back to 100%
+        assert!(
+            scene.thrust_fuel() < scene.max_thrust_duration(),
+            "Fuel must not instantly replenish to 100% upon touching ground"
+        );
+
+        // Step forward by another 60 frames (~0.96s) on the ground
+        for _ in 0..60 {
+            scene.update_physics(0.016);
+        }
+        let expected_after_60 = expected_1_frame + ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE * (60.0 * 0.016);
+        assert!(
+            (scene.thrust_fuel() - expected_after_60).abs() < 1e-3,
+            "Fuel should have increased gradually to {}, but was {}",
+            expected_after_60,
+            scene.thrust_fuel()
+        );
+        assert!(scene.thrust_fuel() < scene.max_thrust_duration());
+
+        // Test that slow recharge also works identically when resting on the mid-air platform
+        scene.world_mut().positions[player_id.0] =
+            Vector2::new(ActTwoScene::PLATFORM_X, ActTwoScene::PLAYER_PLATFORM_RESTING_Y);
+        scene.world_mut().velocities[player_id.0] = Vector2::new(0.0, 0.0);
+        assert!(scene.is_player_grounded());
+
+        scene.set_thrust_fuel(0.3);
+        for _ in 0..20 {
+            scene.update_physics(0.016);
+        }
+        let expected_platform_fuel = 0.3 + ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE * (20.0 * 0.016);
+        assert!(
+            (scene.thrust_fuel() - expected_platform_fuel).abs() < 1e-3,
+            "Fuel should slowly recharge on platform too, expected {}, got {}",
+            expected_platform_fuel,
+            scene.thrust_fuel()
+        );
+        assert!(scene.thrust_fuel() < scene.max_thrust_duration());
+
+        // Wait long enough on the platform (3.0s) for it to fully recharge and cap at max
+        for _ in 0..250 {
+            scene.update_physics(0.016);
+        }
+        assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration());
+    }
+
+    #[test]
+    fn test_thrust_recharge_rate_tuning() {
+        let mut scene = ActTwoScene::new();
+        assert_eq!(scene.thrust_recharge_rate(), ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE);
+
+        // Tune recharge rate to 1.0 fuel/s
+        scene.set_thrust_recharge_rate(1.0);
+        assert_eq!(scene.thrust_recharge_rate(), 1.0);
+
+        // Settle on ground and set fuel to 0.0
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+        scene.set_thrust_fuel(0.0);
+
+        // 30 frames (0.48s) of recharge should add 0.48s of fuel at rate 1.0
+        for _ in 0..30 {
+            scene.update_physics(0.016);
+        }
+        let expected = 30.0 * 0.016 * 1.0;
+        assert!((scene.thrust_fuel() - expected).abs() < 1e-3);
     }
 
     #[test]
