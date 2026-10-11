@@ -159,8 +159,8 @@ pub struct PhysicsData {
 
 impl PhysicsData {
     pub const LIGHT_GRAVITY_SCALE: f32 = 0.5;
-    pub const NORMAL_GRAVITY_SCALE: f32 = 4.0;
-    pub const HEAVY_GRAVITY_SCALE: f32 = 7.5;
+    pub const NORMAL_GRAVITY_SCALE: f32 = 6.0;
+    pub const HEAVY_GRAVITY_SCALE: f32 = 9.5;
     pub const LIGHT_MAX_FALL_SPEED: f32 = 25.0;
 
     pub fn new() -> Self {

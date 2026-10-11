@@ -51,6 +51,9 @@ pub struct ActTwoScene {
     max_thrust_duration: f32,
     thrust_fuel: f32,
     is_thrusting: bool,
+    thrust_activation_delay: f32,
+    thrust_delay_timer: f32,
+    jump_held: bool,
 }
 
 impl ActTwoScene {
@@ -82,11 +85,15 @@ impl ActTwoScene {
 
     /// Upward thruster acceleration in virtual px/s^2.
     /// Overcomes downward gravity (240.0 px/s^2) to smoothly curve out of falls and climb upward.
-    pub const THRUST_ACCELERATION: f32 = 420.0;
+    pub const THRUST_ACCELERATION: f32 = 560.0;
 
     /// Maximum upward speed (virtual px/s) while climbing under thruster power.
     /// Keeps the upward climb gentle, controlled, and visibly curving.
     pub const MAX_THRUST_SPEED: f32 = 65.0;
+
+    /// Default delay (in seconds) before thruster activation when Space is pressed continuously from a ground jump.
+    /// Prevents standard jumps from consuming thruster fuel during the initial upward trajectory.
+    pub const DEFAULT_THRUST_ACTIVATION_DELAY: f32 = 0.25;
 
     pub fn new() -> Self {
         let mut world = World::new();
@@ -127,6 +134,9 @@ impl ActTwoScene {
             max_thrust_duration: Self::DEFAULT_MAX_THRUST_DURATION,
             thrust_fuel: Self::DEFAULT_MAX_THRUST_DURATION,
             is_thrusting: false,
+            thrust_activation_delay: Self::DEFAULT_THRUST_ACTIVATION_DELAY,
+            thrust_delay_timer: 0.0,
+            jump_held: false,
         }
     }
 
@@ -181,6 +191,21 @@ impl ActTwoScene {
         self.thrust_fuel = self.thrust_fuel.min(self.max_thrust_duration);
     }
 
+    /// Current configured delay (in seconds) before thrusters ignite when Space is held continuously from a jump.
+    pub fn thrust_activation_delay(&self) -> f32 {
+        self.thrust_activation_delay
+    }
+
+    /// Sets the delay (in seconds) before thrusters ignite when Space is held continuously from a jump.
+    pub fn set_thrust_activation_delay(&mut self, delay: f32) {
+        self.thrust_activation_delay = delay.max(0.0);
+    }
+
+    /// Current remaining delay timer before thruster activation.
+    pub fn thrust_delay_timer(&self) -> f32 {
+        self.thrust_delay_timer
+    }
+
     /// Current remaining thruster fuel in seconds.
     pub fn thrust_fuel(&self) -> f32 {
         self.thrust_fuel
@@ -214,13 +239,16 @@ impl ActTwoScene {
     /// Handles platformer inputs for the player:
     /// - Arrow-Left / A: move left
     /// - Arrow-Right / D: move right
-    /// - Space pressed on ground: jump
-    /// - Space held: engages thrusters while airborne with remaining fuel
+    /// - Space pressed on ground: jump (initiates delayed thruster window)
+    /// - Space held continuously: engages thrusters once the delay window elapses
+    /// - Space pressed while airborne (after release): engages thrusters immediately
     pub fn handle_input(&mut self, input: &ActTwoInput) {
         let Some(player_id) = self.player_id else { return };
         if player_id.0 >= self.world.next_entity_id || !self.world.alive[player_id.0] {
             return;
         }
+
+        self.jump_held = input.jump_held;
 
         // Horizontal movement: left and right arrow keys
         if input.left && !input.right {
@@ -236,11 +264,25 @@ impl ActTwoScene {
         // Jump when pressing Space and resting on the ground
         if input.jump && grounded {
             self.world.velocities[player_id.0].y = -Self::PLAYER_JUMP_IMPULSE;
+            // Start the activation delay so the initial upward trajectory of the jump does not consume thrust
+            self.thrust_delay_timer = self.thrust_activation_delay;
+            self.is_thrusting = false;
         }
 
-        // Thruster activation: when Space is held while airborne and fuel remains
-        if input.jump_held && !grounded && self.thrust_fuel > 0.0 {
-            self.is_thrusting = true;
+        // Thruster activation:
+        // - If Space is released, reset delay timer and deactivate thrusters
+        // - If Space is held while airborne and fuel remains:
+        //   - Ignites if delay timer has elapsed (or if Space was pressed in mid-air with timer at 0)
+        //   - Otherwise remains off during the initial jump delay
+        if !input.jump_held {
+            self.thrust_delay_timer = 0.0;
+            self.is_thrusting = false;
+        } else if !grounded && self.thrust_fuel > 0.0 {
+            if self.thrust_delay_timer <= 0.0 {
+                self.is_thrusting = true;
+            } else {
+                self.is_thrusting = false;
+            }
         } else {
             self.is_thrusting = false;
         }
@@ -249,6 +291,8 @@ impl ActTwoScene {
     /// Resets the player entity back to the center of the viewport with zero velocity and full fuel.
     pub fn reset_player(&mut self) {
         self.is_thrusting = false;
+        self.thrust_delay_timer = 0.0;
+        self.jump_held = false;
         self.thrust_fuel = self.max_thrust_duration;
         if let Some(player_id) = self.player_id {
             if player_id.0 < self.world.next_entity_id {
@@ -266,6 +310,14 @@ impl ActTwoScene {
             collision::update(&mut self.world, dt);
             return;
         };
+
+        // Count down thruster delay if Space is held continuously from a ground jump
+        if self.thrust_delay_timer > 0.0 && dt > 0.0 {
+            self.thrust_delay_timer = (self.thrust_delay_timer - dt).max(0.0);
+            if self.thrust_delay_timer == 0.0 && self.jump_held && !self.is_player_grounded() && self.thrust_fuel > 0.0 {
+                self.is_thrusting = true;
+            }
+        }
 
         if self.is_thrusting && self.thrust_fuel > 0.0 && dt > 0.0 {
             // Deplete thruster fuel
@@ -288,10 +340,11 @@ impl ActTwoScene {
         collision::update(&mut self.world, dt);
 
         if player_id.0 < self.world.next_entity_id && self.world.alive[player_id.0] {
-            // Recharge thruster fuel when resting on the solid floor
+            // Recharge thruster fuel and reset delay when resting on the solid floor
             if collision::is_blocked_down(&self.world, player_id.0) {
                 self.thrust_fuel = self.max_thrust_duration;
                 self.is_thrusting = false;
+                self.thrust_delay_timer = 0.0;
             }
 
             // Clamp player within the camera viewport boundaries
@@ -610,25 +663,97 @@ mod tests {
     }
 
     #[test]
-    fn test_thruster_fires_when_space_held_in_air() {
+    fn test_thruster_starts_delayed_when_space_held_continuously_after_jump() {
         let mut scene = ActTwoScene::new();
 
         // Let player land on ground
         for _ in 0..300 {
             scene.update_physics(0.016);
         }
+        assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration());
 
-        // Jump and hold Space
+        // Jump and hold Space continuously
         scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(true));
         scene.update_physics(0.016);
 
-        // While in the air, thrusters should be active and fuel consuming
-        scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(true));
-        assert!(scene.is_thrusting());
+        // During the initial jump delay (e.g. first 0.16s < 0.25s delay), thrusters must NOT fire and fuel must NOT burn
+        for _ in 0..10 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(true));
+            scene.update_physics(0.016);
+        }
+        assert!(
+            !scene.is_thrusting(),
+            "Thrusters should not be active during the initial jump upward trajectory delay"
+        );
+        assert_eq!(
+            scene.thrust_fuel(),
+            scene.max_thrust_duration(),
+            "Jump upward trajectory must not consume any thruster fuel"
+        );
+
+        // Advance past the 0.25s delay threshold (another 8 steps = ~0.29s total)
+        for _ in 0..8 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(true));
+            scene.update_physics(0.016);
+        }
+        assert!(
+            scene.is_thrusting(),
+            "Thrusters should now be active after continuous Space hold exceeds delay"
+        );
 
         let fuel_before = scene.thrust_fuel();
         scene.update_physics(0.1);
         assert!(scene.thrust_fuel() < fuel_before, "Fuel should deplete during thrust");
+    }
+
+    #[test]
+    fn test_jump_tap_costs_zero_thrust() {
+        let mut scene = ActTwoScene::new();
+
+        // Settle on ground
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+
+        // Tap jump: Space pressed and released
+        scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(false));
+        for _ in 0..60 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(false));
+            scene.update_physics(0.016);
+            assert!(!scene.is_thrusting(), "Thrusters must never fire on a standard jump tap");
+            assert_eq!(
+                scene.thrust_fuel(),
+                scene.max_thrust_duration(),
+                "Standard jump tap must cost 0 thruster fuel"
+            );
+        }
+    }
+
+    #[test]
+    fn test_thruster_fires_immediately_when_space_pressed_in_mid_air() {
+        let mut scene = ActTwoScene::new();
+
+        // Settle on ground
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+
+        // Jump with tap (Space released)
+        scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(false));
+        for _ in 0..10 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(false));
+            scene.update_physics(0.016);
+        }
+        assert!(!scene.is_player_grounded());
+        assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration());
+
+        // Press Space while airborne: thruster must engage immediately without delay
+        scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(true));
+        assert!(scene.is_thrusting(), "Mid-air thruster press must engage immediately");
+
+        let fuel_before = scene.thrust_fuel();
+        scene.update_physics(0.05);
+        assert!(scene.thrust_fuel() < fuel_before, "Fuel should burn when thrusting in air");
     }
 
     #[test]
@@ -705,9 +830,9 @@ mod tests {
             scene.update_physics(0.016);
         }
 
-        // Jump and burn ~0.5s of fuel
+        // Jump and burn fuel past the 0.25s delay
         scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(true));
-        for _ in 0..30 {
+        for _ in 0..45 {
             scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(true));
             scene.update_physics(0.016);
         }
