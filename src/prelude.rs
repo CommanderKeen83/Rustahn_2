@@ -6,7 +6,7 @@ pub use crate::ecs::{self, World};
 pub use crate::gamestate::Gamestate;
 pub use crate::resources::ResourceManager;
 pub use crate::scenes::{
-    self, ActOne, ActOneScene, ActTwo, ActTwoScene, Asteroid, AsteroidField, Scene, SceneAction,
+    self, ActOne, ActOneScene, ActTwo, ActTwoInput, ActTwoScene, Asteroid, AsteroidField, Scene, SceneAction,
     SceneManager, SceneTag,
 };
 pub use crate::screens;

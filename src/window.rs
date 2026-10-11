@@ -22,7 +22,10 @@ impl Window {
             .size(GAME_WIDTH, GAME_HEIGHT)
             .title("Rabahn")
             .undecorated()
+            .vsync()
             .build();
+
+        rl.set_target_fps(60);
 
         let target = rl
             .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)

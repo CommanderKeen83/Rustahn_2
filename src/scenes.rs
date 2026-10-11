@@ -7,7 +7,7 @@ use sola_raylib::prelude::*;
 
 pub use crate::camera::{ActOnePhase, IntroPan, IntroPhase};
 pub use act_one::ActOneScene;
-pub use act_two::ActTwoScene;
+pub use act_two::{ActTwoInput, ActTwoScene};
 pub use asteroid_field::{Asteroid, AsteroidField};
 pub type LevelOneScene = ActOneScene;
 pub type ActOne = ActOneScene;
