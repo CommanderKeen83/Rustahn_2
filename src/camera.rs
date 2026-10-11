@@ -106,6 +106,40 @@ impl GameCamera {
             zoom: VIRTUAL_SCALE,
         }
     }
+
+    /// Computes the target camera top-left position needed to center an entity at `center`.
+    pub fn target_for_center(&self, center: Vector2) -> Vector2 {
+        Vector2::new(
+            center.x - self.viewport_width * 0.5,
+            center.y - self.viewport_height * 0.5,
+        )
+    }
+
+    /// Smoothly moves the camera position towards `target` using frame-rate independent
+    /// exponential damping (rubber-band easing).
+    ///
+    /// `speed` controls the tracking stiffness/responsiveness (e.g. 5.0 for a slight rubber-band lag).
+    /// `dt` is the elapsed frame time in seconds.
+    pub fn follow_smooth(&mut self, target: Vector2, speed: f32, dt: f32) {
+        if dt <= 0.0 || speed <= 0.0 {
+            return;
+        }
+        let factor = 1.0 - (-speed * dt).exp();
+        self.position.x += (target.x - self.position.x) * factor;
+        self.position.y += (target.y - self.position.y) * factor;
+
+        if (target.x - self.position.x).abs() < 1e-4 {
+            self.position.x = target.x;
+        }
+        if (target.y - self.position.y).abs() < 1e-4 {
+            self.position.y = target.y;
+        }
+    }
+
+    /// Clamps the horizontal camera position so that `self.position.x >= min_x`.
+    pub fn clamp_min_x(&mut self, min_x: f32) {
+        self.position.x = self.position.x.max(min_x);
+    }
 }
 
 impl Default for GameCamera {
@@ -216,5 +250,26 @@ mod tests {
         assert_eq!(pan.camera_x(25.0), 320.0);
         assert_eq!(pan.phase(25.0), IntroPhase::Stationary);
         assert!((pan.finish_time() - 18.8).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_camera_target_for_center_and_follow_smooth() {
+        let mut cam = GameCamera::new();
+        assert_eq!(cam.x(), 0.0);
+        assert_eq!(cam.y(), 0.0);
+
+        let target = cam.target_for_center(Vector2::new(320.0, 180.0));
+        assert_eq!(target.x, 160.0);
+        assert_eq!(target.y, 90.0);
+
+        // Smooth follow moves towards target with rubber-band easing
+        cam.follow_smooth(target, 5.0, 0.1);
+        assert!(cam.x() > 0.0 && cam.x() < 160.0);
+        assert!(cam.y() > 0.0 && cam.y() < 90.0);
+
+        // Clamp min x
+        cam.set_x(-50.0);
+        cam.clamp_min_x(0.0);
+        assert_eq!(cam.x(), 0.0);
     }
 }

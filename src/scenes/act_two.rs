@@ -50,6 +50,7 @@ pub struct ActTwoScene {
     floor_id: Option<EntityID>,
     platform_id: Option<EntityID>,
     pub camera: GameCamera,
+    camera_follow_speed: f32,
     max_thrust_duration: f32,
     thrust_fuel: f32,
     thrust_recharge_rate: f32,
@@ -60,6 +61,9 @@ pub struct ActTwoScene {
 }
 
 impl ActTwoScene {
+    /// Default camera follow smoothing speed (responsiveness factor for rubber-band effect).
+    pub const DEFAULT_CAMERA_FOLLOW_SPEED: f32 = 5.0;
+
     /// Viewport floor collision rectangle dimensions and center position.
     /// Spans the entire virtual viewport width (320 px) along the bottom (y = 160.0..180.0).
     pub const FLOOR_WIDTH: f32 = VIRTUAL_WIDTH as f32; // 320.0
@@ -162,6 +166,7 @@ impl ActTwoScene {
             floor_id: Some(floor_id),
             platform_id: Some(platform_id),
             camera: GameCamera::new(),
+            camera_follow_speed: Self::DEFAULT_CAMERA_FOLLOW_SPEED,
             max_thrust_duration: Self::DEFAULT_MAX_THRUST_DURATION,
             thrust_fuel: Self::DEFAULT_MAX_THRUST_DURATION,
             thrust_recharge_rate: Self::DEFAULT_THRUST_RECHARGE_RATE,
@@ -286,6 +291,36 @@ impl ActTwoScene {
         false
     }
 
+    /// Camera follow speed factor governing the rubber-band response rate.
+    pub fn camera_follow_speed(&self) -> f32 {
+        self.camera_follow_speed
+    }
+
+    /// Sets the camera follow speed factor.
+    pub fn set_camera_follow_speed(&mut self, speed: f32) {
+        self.camera_follow_speed = speed.max(0.0);
+    }
+
+    /// Smoothly updates the camera to follow the player on the X and Y axes with a rubber-band effect.
+    ///
+    /// The left side of the camera is clamped to world coordinate `x = 0.0` at all times.
+    /// As the player moves right or vertically (jumping, thruster climbing, falling),
+    /// the camera follows smoothly with elastic lag.
+    pub fn update_camera(&mut self, dt: f32) {
+        let Some(player_id) = self.player_id else { return };
+        if player_id.0 >= self.world.next_entity_id || !self.world.alive[player_id.0] {
+            return;
+        }
+
+        let player_pos = self.world.positions[player_id.0];
+        let mut target = self.camera.target_for_center(player_pos);
+        // The left side of the camera is clamped to x = 0 on world coordinates
+        target.x = target.x.max(0.0);
+
+        self.camera.follow_smooth(target, self.camera_follow_speed, dt);
+        self.camera.clamp_min_x(0.0);
+    }
+
     /// Handles platformer inputs for the player:
     /// - Arrow-Left / A: move left
     /// - Arrow-Right / D: move right
@@ -338,12 +373,14 @@ impl ActTwoScene {
         }
     }
 
-    /// Resets the player entity back to the center of the viewport with zero velocity and full fuel.
+    /// Resets the player entity back to the center of the viewport with zero velocity and full fuel,
+    /// and resets the camera to (0, 0).
     pub fn reset_player(&mut self) {
         self.is_thrusting = false;
         self.thrust_delay_timer = 0.0;
         self.jump_held = false;
         self.thrust_fuel = self.max_thrust_duration;
+        self.camera.set_position(Vector2::new(0.0, 0.0));
         if let Some(player_id) = self.player_id {
             if player_id.0 < self.world.next_entity_id {
                 self.world.positions[player_id.0] = Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y);
@@ -398,6 +435,9 @@ impl ActTwoScene {
                 self.is_thrusting = false;
                 self.thrust_delay_timer = 0.0;
             }
+
+            // Update camera to smoothly follow the player with a rubber-band effect
+            self.update_camera(dt);
 
             // Clamp player within the camera viewport boundaries
             let half_w = Self::PLAYER_WIDTH * 0.5;
@@ -574,6 +614,7 @@ mod tests {
         assert_eq!(scene.tag(), Some(SceneTag::ActTwo));
         assert_eq!(scene.camera().x(), 0.0);
         assert_eq!(scene.camera().y(), 0.0);
+        assert_eq!(scene.camera_follow_speed(), ActTwoScene::DEFAULT_CAMERA_FOLLOW_SPEED);
         assert!(!scene.is_thrusting());
         assert_eq!(scene.max_thrust_duration(), ActTwoScene::DEFAULT_MAX_THRUST_DURATION);
         assert_eq!(scene.thrust_fuel(), ActTwoScene::DEFAULT_MAX_THRUST_DURATION);
@@ -1129,23 +1170,27 @@ mod tests {
 
         let half_w = ActTwoScene::PLAYER_WIDTH * 0.5;
         let min_x = scene.camera().x() + half_w;
-        let max_x = scene.camera().x() + scene.camera().viewport_width - half_w;
 
-        // Move Left continuously past boundary
+        // Move Left continuously past boundary (camera left clamped to x = 0, so player clamped to min_x)
         for _ in 0..300 {
             scene.handle_input(&ActTwoInput::new(true, false, false));
             scene.update_physics(0.016);
         }
         let clamped_left = scene.world().positions[player_id.0].x;
         assert_eq!(clamped_left, min_x, "Player should be clamped at left boundary {}", min_x);
+        assert_eq!(scene.camera().x(), 0.0, "Camera should stay clamped at x = 0");
 
-        // Move Right continuously past boundary
+        // Move Right continuously past the initial 320px viewport
         for _ in 0..600 {
             scene.handle_input(&ActTwoInput::new(false, true, false));
             scene.update_physics(0.016);
         }
-        let clamped_right = scene.world().positions[player_id.0].x;
-        assert_eq!(clamped_right, max_x, "Player should be clamped at right boundary {}", max_x);
+        let right_pos = scene.world().positions[player_id.0].x;
+        assert!(right_pos > 320.0, "Player should wander to the right side past initial boundary");
+        assert!(scene.camera().x() > 0.0, "Camera should follow the player to the right");
+        // Player must always remain within the camera viewport
+        let current_max_x = scene.camera().x() + scene.camera().viewport_width - half_w;
+        assert!(right_pos <= current_max_x + 1e-3, "Player should remain within current camera viewport boundary");
     }
 
     #[test]
@@ -1372,5 +1417,186 @@ mod tests {
         assert_eq!(scene.world().velocities[player_id.0], Vector2::new(0.0, 0.0));
         assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration());
         assert!(!scene.is_thrusting());
+        assert_eq!(scene.camera().x(), 0.0);
+        assert_eq!(scene.camera().y(), 0.0);
+    }
+
+    #[test]
+    fn test_camera_clamped_to_x_zero_on_left() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Move player left from spawn towards x = 0
+        for _ in 0..200 {
+            scene.handle_input(&ActTwoInput::new(true, false, false));
+            scene.update_physics(0.016);
+            assert_eq!(scene.camera().x(), 0.0, "Camera left side must remain clamped to x = 0");
+        }
+
+        let half_w = ActTwoScene::PLAYER_WIDTH * 0.5;
+        assert_eq!(scene.world().positions[player_id.0].x, half_w);
+        assert_eq!(scene.camera().x(), 0.0);
+    }
+
+    #[test]
+    fn test_camera_follows_player_moving_right() {
+        let mut scene = ActTwoScene::new();
+
+        // Move player right
+        for _ in 0..100 {
+            scene.handle_input(&ActTwoInput::new(false, true, false));
+            scene.update_physics(0.016);
+        }
+
+        assert!(
+            scene.camera().x() > 0.0,
+            "Camera should follow player to the right when moving right, camera.x = {}",
+            scene.camera().x()
+        );
+    }
+
+    #[test]
+    fn test_camera_rubber_band_lag_and_catchup() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Place player at spawn and ensure camera at (0, 0)
+        scene.world_mut().positions[player_id.0] = Vector2::new(ActTwoScene::PLAYER_SPAWN_X, 90.0);
+        scene.camera_mut().set_position(Vector2::new(0.0, 0.0));
+
+        // Move right for 60 frames (~1.0s)
+        for _ in 0..60 {
+            scene.handle_input(&ActTwoInput::new(false, true, false));
+            scene.update_physics(0.016);
+        }
+
+        let player_x = scene.world().positions[player_id.0].x;
+        let target_x = player_x - scene.camera().viewport_width * 0.5;
+        let moving_cam_x = scene.camera().x();
+
+        // During motion, camera lags behind target (rubber-band lag)
+        assert!(
+            moving_cam_x < target_x,
+            "Camera should lag behind target during rightward motion (rubber-band effect): cam_x={}, target_x={}",
+            moving_cam_x,
+            target_x
+        );
+        let lag_while_moving = target_x - moving_cam_x;
+        assert!(lag_while_moving > 5.0, "Noticeable rubber-band lag should exist while moving");
+
+        // Stop moving (no input): camera should smoothly catch up towards target_x
+        for _ in 0..60 {
+            scene.handle_input(&ActTwoInput::new(false, false, false));
+            scene.update_physics(0.016);
+        }
+
+        let settled_cam_x = scene.camera().x();
+        let current_target_x = scene.world().positions[player_id.0].x - scene.camera().viewport_width * 0.5;
+        let lag_after_stop = (current_target_x - settled_cam_x).abs();
+
+        assert!(
+            lag_after_stop < lag_while_moving,
+            "Camera should catch up after player stops: initial lag {}, settled lag {}",
+            lag_while_moving,
+            lag_after_stop
+        );
+        assert!(
+            lag_after_stop < 1.0,
+            "Camera should almost completely close the lag distance once player is stationary, got {}",
+            lag_after_stop
+        );
+    }
+
+    #[test]
+    fn test_camera_follows_player_on_y_axis() {
+        let mut scene = ActTwoScene::new();
+        let _player_id = scene.player_id().unwrap();
+
+        // Initially at spawn: player y = 90.0, camera y = 0.0
+        assert_eq!(scene.camera().y(), 0.0);
+
+        // Player falls under gravity down to ground (y = 150.0)
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+
+        // Camera should follow downwards (y increases towards 150 - 90 = 60.0)
+        assert!(
+            scene.camera().y() > 40.0,
+            "Camera should have followed player downward on Y axis, camera.y = {}",
+            scene.camera().y()
+        );
+
+        let ground_cam_y = scene.camera().y();
+
+        // Jump and engage thrusters upward
+        scene.handle_input(&ActTwoInput::new(false, false, true).with_jump_held(true));
+        for _ in 0..60 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(true));
+            scene.update_physics(0.016);
+        }
+
+        // Player is climbing upward, camera y must decrease (following upward)
+        assert!(
+            scene.camera().y() < ground_cam_y,
+            "Camera should follow player upward on Y axis when climbing with thrusters: ground_y={}, climb_y={}",
+            ground_cam_y,
+            scene.camera().y()
+        );
+    }
+
+    #[test]
+    fn test_camera_returns_and_clamps_when_player_moves_back_left() {
+        let mut scene = ActTwoScene::new();
+
+        // Move right so camera moves to the right
+        for _ in 0..120 {
+            scene.handle_input(&ActTwoInput::new(false, true, false));
+            scene.update_physics(0.016);
+        }
+        assert!(scene.camera().x() > 50.0);
+
+        // Move left until player returns to starting area
+        for _ in 0..300 {
+            scene.handle_input(&ActTwoInput::new(true, false, false));
+            scene.update_physics(0.016);
+        }
+
+        // Camera must smoothly return to 0.0 and clamp to x = 0
+        assert_eq!(
+            scene.camera().x(),
+            0.0,
+            "Camera must return and clamp to x = 0 when player moves back to left side"
+        );
+    }
+
+    #[test]
+    fn test_camera_follow_speed_tuning() {
+        let mut scene = ActTwoScene::new();
+        assert_eq!(scene.camera_follow_speed(), ActTwoScene::DEFAULT_CAMERA_FOLLOW_SPEED);
+
+        scene.set_camera_follow_speed(10.0);
+        assert_eq!(scene.camera_follow_speed(), 10.0);
+
+        // Higher speed should catch up faster
+        let mut fast_scene = ActTwoScene::new();
+        fast_scene.set_camera_follow_speed(15.0);
+
+        let mut slow_scene = ActTwoScene::new();
+        slow_scene.set_camera_follow_speed(2.0);
+
+        for _ in 0..30 {
+            fast_scene.handle_input(&ActTwoInput::new(false, true, false));
+            fast_scene.update_physics(0.016);
+            slow_scene.handle_input(&ActTwoInput::new(false, true, false));
+            slow_scene.update_physics(0.016);
+        }
+
+        assert!(
+            fast_scene.camera().x() > slow_scene.camera().x(),
+            "Fast camera follow speed should track player closer than slow camera follow speed: fast={}, slow={}",
+            fast_scene.camera().x(),
+            slow_scene.camera().x()
+        );
     }
 }
