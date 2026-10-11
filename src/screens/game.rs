@@ -38,6 +38,14 @@ impl Screen for Game {
             return Some(Transition::Push(State::from_tag(StateTag::Pause)));
         }
 
+        // Quick debug hotkeys for testing mechanics across acts:
+        // F1 -> Switch to Act One, F2 -> Switch to Act Two
+        if ctx.rl.is_key_pressed(KeyboardKey::KEY_F1) {
+            self.scene_manager.switch_scene(Box::new(ActOneScene::new()));
+        } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_F2) {
+            self.scene_manager.switch_scene(Box::new(ActTwoScene::new()));
+        }
+
         self.scene_manager.update(ctx);
 
         None
