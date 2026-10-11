@@ -39,7 +39,8 @@ impl ActTwoInput {
 
 /// Act Two scene: testing ground for gameplay mechanics.
 ///
-/// Features a solid green collision rectangle spanning the entire floor of the camera viewport
+/// Features a solid green collision rectangle spanning the entire floor of the camera viewport,
+/// a solid green mid-air platform rectangle to test jumping and landing mechanics,
 /// and a purple player rectangle in the center of the viewport that naturally falls under gravity,
 /// moves horizontally with left/right arrow keys, jumps on pressing Space, and swings slowly
 /// upwards in a smooth curve powered by thrusters when Space remains pressed.
@@ -47,6 +48,7 @@ pub struct ActTwoScene {
     world: World,
     player_id: Option<EntityID>,
     floor_id: Option<EntityID>,
+    platform_id: Option<EntityID>,
     pub camera: GameCamera,
     max_thrust_duration: f32,
     thrust_fuel: f32,
@@ -63,6 +65,16 @@ impl ActTwoScene {
     pub const FLOOR_HEIGHT: f32 = 20.0;
     pub const FLOOR_X: f32 = VIRTUAL_WIDTH as f32 * 0.5; // 160.0
     pub const FLOOR_Y: f32 = VIRTUAL_HEIGHT as f32 - Self::FLOOR_HEIGHT * 0.5; // 170.0
+
+    /// Mid-air green platform collision rectangle dimensions and center position.
+    pub const PLATFORM_WIDTH: f32 = 60.0;
+    pub const PLATFORM_HEIGHT: f32 = 12.0;
+    pub const PLATFORM_X: f32 = 90.0;
+    pub const PLATFORM_Y: f32 = 120.0;
+
+    /// Expected resting Y coordinate for the player center once landed on top of the mid-air platform:
+    /// platform top edge (114.0) - player half height (10.0) = 104.0.
+    pub const PLAYER_PLATFORM_RESTING_Y: f32 = (Self::PLATFORM_Y - Self::PLATFORM_HEIGHT * 0.5) - Self::PLAYER_HEIGHT * 0.5;
 
     /// Player rectangle dimensions and initial center position in the middle of the camera viewport.
     pub const PLAYER_WIDTH: f32 = 20.0;
@@ -112,7 +124,21 @@ impl ActTwoScene {
             .with_physics(PhysicsData::static_body())
             .build();
 
-        // 2. Player entity positioned in the middle of the view
+        // 2. Mid-air solid platform collision rectangle
+        let platform_id = world
+            .spawn(
+                EntityType::Ground,
+                Vector2::new(Self::PLATFORM_X, Self::PLATFORM_Y),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::None,
+            )
+            .with_collider(Collider::new(Self::PLATFORM_WIDTH, Self::PLATFORM_HEIGHT))
+            .with_physics(PhysicsData::static_body())
+            .build();
+
+        // 3. Player entity positioned in the middle of the view
         let player_id = world
             .spawn(
                 EntityType::Player,
@@ -130,6 +156,7 @@ impl ActTwoScene {
             world,
             player_id: Some(player_id),
             floor_id: Some(floor_id),
+            platform_id: Some(platform_id),
             camera: GameCamera::new(),
             max_thrust_duration: Self::DEFAULT_MAX_THRUST_DURATION,
             thrust_fuel: Self::DEFAULT_MAX_THRUST_DURATION,
@@ -178,6 +205,14 @@ impl ActTwoScene {
 
     pub fn ground_position(&self) -> Option<Vector2> {
         self.floor_position()
+    }
+
+    pub fn platform_id(&self) -> Option<EntityID> {
+        self.platform_id
+    }
+
+    pub fn platform_position(&self) -> Option<Vector2> {
+        self.platform_id.map(|id| self.world.positions[id.0])
     }
 
     /// Maximum thruster capacity in seconds (upgradeable).
@@ -414,7 +449,10 @@ impl Scene for ActTwoScene {
                 None => continue,
             };
 
-            let color = if Some(EntityID(i)) == self.floor_id || self.world.tags[i].is_solid_obstacle() {
+            let color = if Some(EntityID(i)) == self.floor_id
+                || Some(EntityID(i)) == self.platform_id
+                || self.world.tags[i].is_solid_obstacle()
+            {
                 Color::GREEN
             } else if Some(EntityID(i)) == self.player_id || self.world.tags[i] == EntityType::Player {
                 Color::PURPLE
@@ -548,6 +586,19 @@ mod tests {
         assert!(player_col.is_solid);
         let player_phys = scene.world().physics_data[player_id.0].as_ref().expect("Player should have physics");
         assert!(!player_phys.is_static);
+
+        let platform_id = scene.platform_id().expect("Platform entity should exist");
+        assert_eq!(scene.world().tags[platform_id.0], EntityType::Ground);
+        assert_eq!(
+            scene.world().positions[platform_id.0],
+            Vector2::new(ActTwoScene::PLATFORM_X, ActTwoScene::PLATFORM_Y)
+        );
+        let platform_col = scene.world().colliders[platform_id.0].expect("Platform should have collider");
+        assert_eq!(platform_col.width, ActTwoScene::PLATFORM_WIDTH);
+        assert_eq!(platform_col.height, ActTwoScene::PLATFORM_HEIGHT);
+        assert!(platform_col.is_solid);
+        let platform_phys = scene.world().physics_data[platform_id.0].as_ref().expect("Platform should have physics");
+        assert!(platform_phys.is_static);
     }
 
     #[test]
@@ -1011,10 +1062,10 @@ mod tests {
     fn test_no_objects_with_physics_and_collider_fall_through() {
         let mut scene = ActTwoScene::new();
 
-        // Spawn multiple test objects at different horizontal locations and heights (distinct from player x=160)
+        // Spawn multiple test objects at different horizontal locations and heights (distinct from player x=160 and platform x=90)
         let test_positions = [
             Vector2::new(30.0, 20.0),
-            Vector2::new(100.0, 50.0),
+            Vector2::new(130.0, 50.0),
             Vector2::new(180.0, 70.0),
             Vector2::new(230.0, 30.0),
             Vector2::new(290.0, 60.0),
@@ -1057,6 +1108,139 @@ mod tests {
                 y
             );
         }
+    }
+
+    #[test]
+    fn test_object_lands_on_mid_air_platform() {
+        let mut scene = ActTwoScene::new();
+        let obj_id = scene
+            .world_mut()
+            .spawn(
+                EntityType::Obstacle,
+                Vector2::new(ActTwoScene::PLATFORM_X, 20.0),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::None,
+            )
+            .with_physics_preset(PhysicsPreset::Normal)
+            .with_collider(Collider::new(16.0, 16.0))
+            .build();
+
+        for _ in 0..600 {
+            scene.update_physics(0.016);
+        }
+
+        // Expected resting Y for a 16x16 collider on platform:
+        // platform top (PLATFORM_Y - PLATFORM_HEIGHT * 0.5) - 8.0
+        let expected_y = (ActTwoScene::PLATFORM_Y - ActTwoScene::PLATFORM_HEIGHT * 0.5) - 8.0;
+        let y = scene.world().positions[obj_id.0].y;
+        assert!(
+            (y - expected_y).abs() < 1e-3,
+            "Object dropped above platform should land on platform at {}, but was at {}",
+            expected_y,
+            y
+        );
+    }
+
+    #[test]
+    fn test_player_can_jump_onto_and_rest_on_platform() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Let player land on the floor first
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+        assert!(scene.is_player_grounded());
+        assert!((scene.world().positions[player_id.0].y - ActTwoScene::PLAYER_RESTING_Y).abs() < 1e-3);
+
+        // Jump while moving left towards the platform with Space held
+        scene.handle_input(&ActTwoInput::new(true, false, true).with_jump_held(true));
+        for f in 0..50 {
+            if f > 0 {
+                scene.handle_input(&ActTwoInput::new(true, false, false).with_jump_held(true));
+            }
+            scene.update_physics(0.016);
+        }
+
+        // Release input and let player settle on platform
+        for _ in 0..200 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(false));
+            scene.update_physics(0.016);
+        }
+
+        let landed_y = scene.world().positions[player_id.0].y;
+        assert!(
+            (landed_y - ActTwoScene::PLAYER_PLATFORM_RESTING_Y).abs() < 1e-3,
+            "Player should have landed on platform, expected {}, got {}",
+            ActTwoScene::PLAYER_PLATFORM_RESTING_Y,
+            landed_y
+        );
+        assert!(scene.is_player_grounded(), "Player should be grounded on platform");
+        assert_eq!(scene.thrust_fuel(), scene.max_thrust_duration(), "Fuel should recharge on platform");
+    }
+
+    #[test]
+    fn test_player_can_jump_off_platform_and_land_on_floor() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Place player on platform
+        scene.world_mut().positions[player_id.0] =
+            Vector2::new(ActTwoScene::PLATFORM_X, ActTwoScene::PLAYER_PLATFORM_RESTING_Y);
+        scene.world_mut().velocities[player_id.0] = Vector2::new(0.0, 0.0);
+        assert!(scene.is_player_grounded());
+
+        // Jump and move right off the platform
+        scene.handle_input(&ActTwoInput::new(false, true, true).with_jump_held(false));
+        for _ in 0..50 {
+            scene.handle_input(&ActTwoInput::new(false, true, false).with_jump_held(false));
+            scene.update_physics(0.016);
+        }
+
+        // Release input and let player land on floor
+        for _ in 0..250 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_jump_held(false));
+            scene.update_physics(0.016);
+        }
+
+        let landed_y = scene.world().positions[player_id.0].y;
+        assert!(
+            (landed_y - ActTwoScene::PLAYER_RESTING_Y).abs() < 1e-3,
+            "Player should have landed on floor, expected {}, got {}",
+            ActTwoScene::PLAYER_RESTING_Y,
+            landed_y
+        );
+        assert!(scene.is_player_grounded());
+    }
+
+    #[test]
+    fn test_player_walks_under_platform_without_obstruction() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Settle on floor
+        for _ in 0..300 {
+            scene.update_physics(0.016);
+        }
+
+        // Walk left past the platform (platform is at x = 90, width = 60, so 60..120)
+        // From x = 160 to x < 40
+        for _ in 0..120 {
+            scene.handle_input(&ActTwoInput::new(true, false, false));
+            scene.update_physics(0.016);
+        }
+
+        let x = scene.world().positions[player_id.0].x;
+        let y = scene.world().positions[player_id.0].y;
+        assert!(x < 40.0, "Player should have walked completely past platform to the left");
+        assert!(
+            (y - ActTwoScene::PLAYER_RESTING_Y).abs() < 1e-3,
+            "Player should still be smoothly on the floor at {}, got {}",
+            ActTwoScene::PLAYER_RESTING_Y,
+            y
+        );
     }
 
     #[test]
