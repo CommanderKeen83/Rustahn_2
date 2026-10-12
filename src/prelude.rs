@@ -4,6 +4,9 @@ pub use crate::camera::{GameCamera, IntroPan, IntroPhase};
 pub use crate::components::*;
 pub use crate::ecs::{self, World};
 pub use crate::gamestate::Gamestate;
+pub use crate::map::{
+    JsonValue, LayerType, Map, MapError, MapLayer, MapObject, MapObjectType, MapSpawnResult,
+};
 pub use crate::resources::ResourceManager;
 pub use crate::scenes::{
     self, ActOne, ActOneScene, ActTwo, ActTwoInput, ActTwoScene, Asteroid, AsteroidField, Scene, SceneAction,

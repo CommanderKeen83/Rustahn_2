@@ -4,6 +4,7 @@ pub mod camera;
 pub mod components;
 pub mod ecs;
 pub mod gamestate;
+pub mod map;
 pub mod prelude;
 pub mod resources;
 pub mod scenes;

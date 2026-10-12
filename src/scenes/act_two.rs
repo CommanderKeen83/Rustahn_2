@@ -58,6 +58,8 @@ pub struct ActTwoScene {
     thrust_activation_delay: f32,
     thrust_delay_timer: f32,
     jump_held: bool,
+    spawn_pos: Vector2,
+    map_entities: Option<MapSpawnResult>,
 }
 
 impl ActTwoScene {
@@ -98,7 +100,7 @@ impl ActTwoScene {
     pub const PLAYER_JUMP_IMPULSE: f32 = 300.0;
 
     /// Default maximum thruster duration in seconds (upgradeable).
-    pub const DEFAULT_MAX_THRUST_DURATION: f32 = 1.5;
+    pub const DEFAULT_MAX_THRUST_DURATION: f32 = 2.5;
 
     /// Upward thruster acceleration in virtual px/s^2.
     /// Overcomes downward gravity (240.0 px/s^2) to smoothly curve out of falls and climb upward.
@@ -116,6 +118,12 @@ impl ActTwoScene {
     pub const DEFAULT_THRUST_RECHARGE_RATE: f32 = 0.5;
 
     pub fn new() -> Self {
+        Self::from_map_file("resources/maps/act_two/map1.json")
+            .unwrap_or_else(|_| Self::test_sandbox())
+    }
+
+    /// Hardcoded test sandbox scene with a single floor and mid-air platform.
+    pub fn test_sandbox() -> Self {
         let mut world = World::new();
 
         // 1. Solid floor collision rectangle spanning the whole camera viewport from left to right
@@ -174,7 +182,72 @@ impl ActTwoScene {
             thrust_activation_delay: Self::DEFAULT_THRUST_ACTIVATION_DELAY,
             thrust_delay_timer: 0.0,
             jump_held: false,
+            spawn_pos: Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y),
+            map_entities: None,
         }
+    }
+
+    /// Creates an Act Two scene loaded from a Tiled `Map`.
+    ///
+    /// Spawns all platform objects as solid obstacles and positions the player
+    /// at the map's designated `Spawn` point (or defaults to viewport center).
+    pub fn from_map(map: &Map) -> Self {
+        let mut world = World::new();
+        let map_entities = map.spawn_into_world(&mut world);
+        let spawn_pos = map_entities
+            .spawn_point
+            .unwrap_or(Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y));
+
+        let player_id = world
+            .spawn(
+                EntityType::Player,
+                spawn_pos,
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::Player,
+            )
+            .with_physics_preset(PhysicsPreset::Normal)
+            .with_collider(Collider::new(Self::PLAYER_WIDTH, Self::PLAYER_HEIGHT))
+            .build();
+
+        let mut camera = GameCamera::new();
+        let target = camera.target_for_center(spawn_pos);
+        camera.set_position(Vector2::new(target.x.max(0.0), target.y));
+
+        Self {
+            world,
+            player_id: Some(player_id),
+            floor_id: None,
+            platform_id: None,
+            camera,
+            camera_follow_speed: Self::DEFAULT_CAMERA_FOLLOW_SPEED,
+            max_thrust_duration: Self::DEFAULT_MAX_THRUST_DURATION,
+            thrust_fuel: Self::DEFAULT_MAX_THRUST_DURATION,
+            thrust_recharge_rate: Self::DEFAULT_THRUST_RECHARGE_RATE,
+            is_thrusting: false,
+            thrust_activation_delay: Self::DEFAULT_THRUST_ACTIVATION_DELAY,
+            thrust_delay_timer: 0.0,
+            jump_held: false,
+            spawn_pos,
+            map_entities: Some(map_entities),
+        }
+    }
+
+    /// Creates an Act Two scene by reading and parsing a Tiled JSON map file from `path`.
+    pub fn from_map_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, MapError> {
+        let map = Map::load_from_file(path)?;
+        Ok(Self::from_map(&map))
+    }
+
+    /// Returns the entities spawned from the loaded map, if any.
+    pub fn map_entities(&self) -> Option<&MapSpawnResult> {
+        self.map_entities.as_ref()
+    }
+
+    /// Spawn position for the player in world coordinates.
+    pub fn spawn_pos(&self) -> Vector2 {
+        self.spawn_pos
     }
 
     pub fn world(&self) -> &World {
@@ -380,10 +453,12 @@ impl ActTwoScene {
         self.thrust_delay_timer = 0.0;
         self.jump_held = false;
         self.thrust_fuel = self.max_thrust_duration;
-        self.camera.set_position(Vector2::new(0.0, 0.0));
+        let mut target = self.camera.target_for_center(self.spawn_pos);
+        target.x = target.x.max(0.0);
+        self.camera.set_position(target);
         if let Some(player_id) = self.player_id {
             if player_id.0 < self.world.next_entity_id {
-                self.world.positions[player_id.0] = Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y);
+                self.world.positions[player_id.0] = self.spawn_pos;
                 self.world.velocities[player_id.0] = Vector2::new(0.0, 0.0);
                 self.world.rotations[player_id.0] = 0.0;
             }
@@ -508,11 +583,13 @@ impl Scene for ActTwoScene {
 
             let color = if Some(EntityID(i)) == self.floor_id
                 || Some(EntityID(i)) == self.platform_id
-                || self.world.tags[i].is_solid_obstacle()
+                || (self.world.tags[i].is_solid_obstacle() && col.is_solid)
             {
                 Color::GREEN
             } else if Some(EntityID(i)) == self.player_id || self.world.tags[i] == EntityType::Player {
                 Color::PURPLE
+            } else if !col.is_solid {
+                Color::GOLD
             } else {
                 Color::GRAY
             };
@@ -610,7 +687,7 @@ mod tests {
 
     #[test]
     fn test_act_two_scene_initialization() {
-        let scene = ActTwoScene::new();
+        let scene = ActTwoScene::test_sandbox();
         assert_eq!(scene.tag(), Some(SceneTag::ActTwo));
         assert_eq!(scene.camera().x(), 0.0);
         assert_eq!(scene.camera().y(), 0.0);
@@ -662,7 +739,7 @@ mod tests {
 
     #[test]
     fn test_floor_spans_entire_camera_viewport() {
-        let scene = ActTwoScene::new();
+        let scene = ActTwoScene::test_sandbox();
         let floor_id = scene.floor_id().unwrap();
         let floor_col = scene.world().colliders[floor_id.0].unwrap();
         let floor_pos = scene.world().positions[floor_id.0];
@@ -678,7 +755,7 @@ mod tests {
 
     #[test]
     fn test_player_spawn_in_middle_of_view() {
-        let scene = ActTwoScene::new();
+        let scene = ActTwoScene::test_sandbox();
         let player_pos = scene.player_position().unwrap();
         assert_eq!(player_pos.x, scene.camera().viewport_width * 0.5);
         assert_eq!(player_pos.y, scene.camera().viewport_height * 0.5);
@@ -686,7 +763,7 @@ mod tests {
 
     #[test]
     fn test_player_naturally_falls_and_lands_on_ground() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         let initial_y = scene.world().positions[player_id.0].y;
@@ -732,7 +809,7 @@ mod tests {
 
     #[test]
     fn test_player_jumps_when_pressing_space() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Let player land on the floor first
@@ -962,7 +1039,7 @@ mod tests {
 
     #[test]
     fn test_thruster_recharges_slowly_on_ground_and_platform() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Settle player on ground
@@ -1031,7 +1108,7 @@ mod tests {
 
     #[test]
     fn test_thrust_recharge_rate_tuning() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         assert_eq!(scene.thrust_recharge_rate(), ActTwoScene::DEFAULT_THRUST_RECHARGE_RATE);
 
         // Tune recharge rate to 1.0 fuel/s
@@ -1054,7 +1131,7 @@ mod tests {
 
     #[test]
     fn test_thruster_duration_is_upgradeable() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         assert_eq!(scene.max_thrust_duration(), 1.5);
 
         // Upgrade thruster to 3.5 seconds
@@ -1123,7 +1200,7 @@ mod tests {
 
     #[test]
     fn test_player_jump_and_horizontal_motion_combined() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Settle on ground
@@ -1160,7 +1237,7 @@ mod tests {
 
     #[test]
     fn test_player_clamped_to_viewport_boundaries() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Settle on ground
@@ -1195,7 +1272,7 @@ mod tests {
 
     #[test]
     fn test_player_falls_through_without_floor_collider() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let floor_id = scene.floor_id().unwrap();
         // Remove floor collider
         scene.world_mut().colliders[floor_id.0] = None;
@@ -1215,7 +1292,7 @@ mod tests {
 
     #[test]
     fn test_no_objects_with_physics_and_collider_fall_through() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
 
         // Spawn multiple test objects at different horizontal locations and heights (distinct from player x=160 and platform x=90)
         let test_positions = [
@@ -1267,7 +1344,7 @@ mod tests {
 
     #[test]
     fn test_object_lands_on_mid_air_platform() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let obj_id = scene
             .world_mut()
             .spawn(
@@ -1300,7 +1377,7 @@ mod tests {
 
     #[test]
     fn test_player_can_jump_onto_and_rest_on_platform() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Let player land on the floor first
@@ -1338,7 +1415,7 @@ mod tests {
 
     #[test]
     fn test_player_can_jump_off_platform_and_land_on_floor() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Place player on platform
@@ -1372,7 +1449,7 @@ mod tests {
 
     #[test]
     fn test_player_walks_under_platform_without_obstruction() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Settle on floor
@@ -1400,7 +1477,7 @@ mod tests {
 
     #[test]
     fn test_reset_player() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         // Fall to ground
         for _ in 0..200 {
             scene.update_physics(0.016);
@@ -1423,7 +1500,7 @@ mod tests {
 
     #[test]
     fn test_camera_clamped_to_x_zero_on_left() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let player_id = scene.player_id().unwrap();
 
         // Move player left from spawn towards x = 0
@@ -1509,7 +1586,7 @@ mod tests {
 
     #[test]
     fn test_camera_follows_player_on_y_axis() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
         let _player_id = scene.player_id().unwrap();
 
         // Initially at spawn: player y = 90.0, camera y = 0.0
@@ -1547,7 +1624,7 @@ mod tests {
 
     #[test]
     fn test_camera_returns_and_clamps_when_player_moves_back_left() {
-        let mut scene = ActTwoScene::new();
+        let mut scene = ActTwoScene::test_sandbox();
 
         // Move right so camera moves to the right
         for _ in 0..120 {
@@ -1599,4 +1676,54 @@ mod tests {
             slow_scene.camera().x()
         );
     }
+
+    #[test]
+    fn test_act_two_scene_from_map_file() {
+        let scene = ActTwoScene::from_map_file("resources/maps/act_two/map1.json")
+            .expect("Should construct ActTwoScene from map1");
+
+        assert!(scene.player_id().is_some());
+        let spawn_pos = scene.spawn_pos();
+        assert_eq!(spawn_pos, Vector2::new(160.0, 544.0));
+        assert_eq!(scene.player_position().unwrap(), spawn_pos);
+
+        let map_res = scene.map_entities().expect("MapSpawnResult should be present");
+        assert_eq!(map_res.platforms.len(), 15);
+        assert_eq!(map_res.exits.len(), 1);
+    }
+
+    #[test]
+    fn test_act_two_scene_from_map_player_navigates_and_lands() {
+        let mut scene = ActTwoScene::from_map_file("resources/maps/act_two/map1.json")
+            .expect("Should construct ActTwoScene from map1");
+
+        // Simulate 2 seconds of physics - player falls from (160, 544) onto platform 2 (top y = 672)
+        // Resting y is 672 - 10 = 662
+        for _ in 0..120 {
+            scene.update_physics(1.0 / 60.0);
+        }
+
+        let landed_y = scene.player_position().unwrap().y;
+        assert!(
+            (landed_y - 662.0).abs() < 1e-2,
+            "Player should land on first platform at y = 662.0, got {}",
+            landed_y
+        );
+        assert!(scene.is_player_grounded());
+    }
+
+    #[test]
+    fn test_act_two_scene_new_loads_map1() {
+        let scene = ActTwoScene::new();
+        assert_eq!(scene.tag(), Some(SceneTag::ActTwo));
+        assert!(scene.player_id().is_some());
+        assert_eq!(scene.spawn_pos(), Vector2::new(160.0, 544.0));
+        assert_eq!(scene.player_position().unwrap(), Vector2::new(160.0, 544.0));
+        assert_eq!(scene.camera().y(), 454.0);
+
+        let map_res = scene.map_entities().expect("MapSpawnResult should be present on ActTwoScene::new()");
+        assert_eq!(map_res.platforms.len(), 15);
+        assert_eq!(map_res.exits.len(), 1);
+    }
 }
+
