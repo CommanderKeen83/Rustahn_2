@@ -79,6 +79,34 @@ pub struct WeaponSet {
     pub weapon: WeaponType,
 }
 
+/// Component representing enemy Gobbler AI state and configuration.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GobblerData {
+    /// Whether the Gobbler has been activated by entering the camera view.
+    pub is_active: bool,
+    /// Horizontal movement speed in virtual px/s.
+    pub speed: f32,
+}
+
+impl GobblerData {
+    pub const DEFAULT_SPEED: f32 = 40.0;
+    pub const WIDTH: f32 = 20.0;
+    pub const HEIGHT: f32 = 20.0;
+
+    pub fn new(speed: f32) -> Self {
+        Self {
+            is_active: false,
+            speed,
+        }
+    }
+}
+
+impl Default for GobblerData {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_SPEED)
+    }
+}
+
 use crate::types::EntityType;
 use sola_raylib::prelude::*;
 use std::collections::HashMap;

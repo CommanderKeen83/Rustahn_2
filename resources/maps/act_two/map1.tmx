@@ -5,11 +5,11 @@
  </editorsettings>
  <objectgroup id="2" name="Platforms">
   <object id="22" type="Platform" x="64" y="1024" width="160" height="32"/>
-  <object id="23" x="160" y="976" width="112" height="16"/>
-  <object id="24" x="368" y="880" width="224" height="16"/>
-  <object id="25" x="544" y="976" width="160" height="32"/>
-  <object id="26" x="672" y="928" width="96" height="16"/>
-  <object id="27" x="752" y="832" width="96" height="16"/>
+  <object id="23" type="Platform" x="160" y="976" width="112" height="16"/>
+  <object id="24" type="Platform" x="352" y="896" width="224" height="16"/>
+  <object id="25" type="Platform" x="512" y="992" width="160" height="32"/>
+  <object id="26" type="Platform" x="672" y="928" width="96" height="16"/>
+  <object id="27" type="Platform" x="752" y="832" width="96" height="16"/>
   <object id="28" type="Platform" x="800" y="880" width="176" height="16"/>
   <object id="29" type="Platform" x="976" y="784" width="208" height="32"/>
   <object id="30" type="Platform" x="1264" y="736" width="192" height="32"/>

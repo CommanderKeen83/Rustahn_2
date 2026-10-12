@@ -89,6 +89,11 @@ impl ActTwoScene {
     pub const PLAYER_SPAWN_X: f32 = VIRTUAL_WIDTH as f32 * 0.5; // 160.0
     pub const PLAYER_SPAWN_Y: f32 = VIRTUAL_HEIGHT as f32 * 0.5; // 90.0
 
+    /// Gobbler enemy rectangle dimensions and horizontal move speed.
+    pub const GOBBLER_WIDTH: f32 = GobblerData::WIDTH;
+    pub const GOBBLER_HEIGHT: f32 = GobblerData::HEIGHT;
+    pub const GOBBLER_MOVE_SPEED: f32 = GobblerData::DEFAULT_SPEED;
+
     /// Expected resting Y coordinate for the player center once landed on top of the floor collider:
     /// floor top edge (160.0) - player half height (10.0) = 150.0.
     pub const PLAYER_RESTING_Y: f32 = (Self::FLOOR_Y - Self::FLOOR_HEIGHT * 0.5) - Self::PLAYER_HEIGHT * 0.5;
@@ -243,6 +248,14 @@ impl ActTwoScene {
     /// Returns the entities spawned from the loaded map, if any.
     pub fn map_entities(&self) -> Option<&MapSpawnResult> {
         self.map_entities.as_ref()
+    }
+
+    /// Returns the Gobbler enemy entity IDs spawned from the loaded map, if any.
+    pub fn gobbler_ids(&self) -> &[EntityID] {
+        self.map_entities
+            .as_ref()
+            .map(|m| m.gobblers.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Spawn position for the player in world coordinates.
@@ -465,9 +478,17 @@ impl ActTwoScene {
         }
     }
 
+    /// Updates Gobbler enemy behaviours:
+    /// - Activates once inside camera viewport.
+    /// - Always moves horizontally towards player.
+    pub fn update_enemies(&mut self, dt: f32) {
+        behaviour::gobbler::update(&mut self.world, self.player_id, &self.camera, dt);
+    }
+
     /// Updates physics integration, thruster forces, fuel consumption, and boundary clamping.
     pub fn update_physics(&mut self, dt: f32) {
         let Some(player_id) = self.player_id else {
+            self.update_enemies(dt);
             physics::update(&mut self.world, dt);
             collision::update(&mut self.world, dt);
             return;
@@ -496,6 +517,9 @@ impl ActTwoScene {
                 }
             }
         }
+
+        // Update enemy AI behaviour before physics integration
+        self.update_enemies(dt);
 
         // Standard physics integration and collision resolution
         physics::update(&mut self.world, dt);
@@ -626,6 +650,8 @@ impl Scene for ActTwoScene {
                 Color::GREEN
             } else if Some(EntityID(i)) == self.player_id || self.world.tags[i] == EntityType::Player {
                 Color::PURPLE
+            } else if self.world.tags[i] == EntityType::Gobbler || self.world.tags[i].is_enemy() {
+                Color::BLUE
             } else if !col.is_solid {
                 Color::GOLD
             } else {
@@ -1209,7 +1235,7 @@ mod tests {
             scene.update_physics(0.016);
         }
         let center_x = scene.world().positions[player_id.0].x;
-        assert_eq!(center_x, ActTwoScene::PLAYER_SPAWN_X);
+        assert_eq!(center_x, scene.spawn_pos().x);
 
         // Move Left
         scene.handle_input(&ActTwoInput::new(true, false, false));
@@ -1693,17 +1719,19 @@ mod tests {
         scene.set_camera_follow_speed(10.0);
         assert_eq!(scene.camera_follow_speed(), 10.0);
 
-        // Higher speed should catch up faster
+        // Higher speed should catch up faster when player is past viewport center
         let mut fast_scene = ActTwoScene::new();
         fast_scene.set_camera_follow_speed(15.0);
+        let fast_player = fast_scene.player_id().unwrap();
+        fast_scene.world_mut().positions[fast_player.0] = Vector2::new(300.0, 912.0);
 
         let mut slow_scene = ActTwoScene::new();
         slow_scene.set_camera_follow_speed(2.0);
+        let slow_player = slow_scene.player_id().unwrap();
+        slow_scene.world_mut().positions[slow_player.0] = Vector2::new(300.0, 912.0);
 
         for _ in 0..30 {
-            fast_scene.handle_input(&ActTwoInput::new(false, true, false));
             fast_scene.update_physics(0.016);
-            slow_scene.handle_input(&ActTwoInput::new(false, true, false));
             slow_scene.update_physics(0.016);
         }
 
@@ -1722,12 +1750,13 @@ mod tests {
 
         assert!(scene.player_id().is_some());
         let spawn_pos = scene.spawn_pos();
-        assert_eq!(spawn_pos, Vector2::new(160.0, 544.0));
+        assert_eq!(spawn_pos, Vector2::new(96.0, 912.0));
         assert_eq!(scene.player_position().unwrap(), spawn_pos);
 
         let map_res = scene.map_entities().expect("MapSpawnResult should be present");
-        assert_eq!(map_res.platforms.len(), 15);
+        assert_eq!(map_res.platforms.len(), 18);
         assert_eq!(map_res.exits.len(), 1);
+        assert_eq!(map_res.gobblers.len(), 3);
     }
 
     #[test]
@@ -1735,16 +1764,16 @@ mod tests {
         let mut scene = ActTwoScene::from_map_file("resources/maps/act_two/map1.json")
             .expect("Should construct ActTwoScene from map1");
 
-        // Simulate 2 seconds of physics - player falls from (160, 544) onto platform 2 (top y = 672)
-        // Resting y is 672 - 10 = 662
+        // Simulate 2 seconds of physics - player falls from (96, 912) onto platform 22 (top y = 1024)
+        // Resting y is 1024 - 10 = 1014
         for _ in 0..120 {
             scene.update_physics(1.0 / 60.0);
         }
 
         let landed_y = scene.player_position().unwrap().y;
         assert!(
-            (landed_y - 662.0).abs() < 1e-2,
-            "Player should land on first platform at y = 662.0, got {}",
+            (landed_y - 1014.0).abs() < 1e-2,
+            "Player should land on first platform at y = 1014.0, got {}",
             landed_y
         );
         assert!(scene.is_player_grounded());
@@ -1755,13 +1784,14 @@ mod tests {
         let scene = ActTwoScene::new();
         assert_eq!(scene.tag(), Some(SceneTag::ActTwo));
         assert!(scene.player_id().is_some());
-        assert_eq!(scene.spawn_pos(), Vector2::new(160.0, 544.0));
-        assert_eq!(scene.player_position().unwrap(), Vector2::new(160.0, 544.0));
-        assert_eq!(scene.camera().y(), 454.0);
+        assert_eq!(scene.spawn_pos(), Vector2::new(96.0, 912.0));
+        assert_eq!(scene.player_position().unwrap(), Vector2::new(96.0, 912.0));
+        assert_eq!(scene.camera().y(), 822.0);
 
         let map_res = scene.map_entities().expect("MapSpawnResult should be present on ActTwoScene::new()");
-        assert_eq!(map_res.platforms.len(), 15);
+        assert_eq!(map_res.platforms.len(), 18);
         assert_eq!(map_res.exits.len(), 1);
+        assert_eq!(map_res.gobblers.len(), 3);
     }
 
     #[test]
@@ -1769,7 +1799,7 @@ mod tests {
         let mut scene = ActTwoScene::new();
         let player_id = scene.player_id().unwrap();
 
-        // Initially at spawn (160, 544), player is not at exit
+        // Initially at spawn (96, 912), player is not at exit
         assert!(!scene.is_player_at_exit());
         assert!(scene.check_transition().is_none());
 
@@ -1820,6 +1850,139 @@ mod tests {
         }
 
         assert_eq!(scene_manager.current_tag(), Some(SceneTag::ActThree));
+    }
+
+    #[test]
+    fn test_gobblers_spawned_from_map1() {
+        let scene = ActTwoScene::new();
+        let gobbler_ids = scene.gobbler_ids();
+        assert_eq!(gobbler_ids.len(), 3, "Expected 3 Gobbler enemies from map1.json");
+
+        for &id in gobbler_ids {
+            let idx = id.0;
+            assert_eq!(scene.world().tags[idx], EntityType::Gobbler);
+            assert!(scene.world().tags[idx].is_enemy());
+            assert!(scene.world().alive[idx]);
+
+            // Gobbler dimensions match player rectangle (20.0 x 20.0)
+            let col = scene.world().colliders[idx].expect("Gobbler should have collider");
+            assert_eq!(col.width, ActTwoScene::PLAYER_WIDTH);
+            assert_eq!(col.height, ActTwoScene::PLAYER_HEIGHT);
+            assert!(col.is_solid);
+
+            // Dynamic physics preset
+            let phys = scene.world().physics_data[idx].as_ref().expect("Gobbler should have physics");
+            assert!(!phys.is_static);
+        }
+    }
+
+    #[test]
+    fn test_gobbler_starts_moving_once_inside_camera_view() {
+        let mut scene = ActTwoScene::new();
+        let gobbler_ids = scene.gobbler_ids();
+        assert_eq!(gobbler_ids.len(), 3);
+
+        let first_gobbler = gobbler_ids[0]; // Spawns at x = 512, y = 800
+
+        // Initially at spawn (player x = 96, camera x = 0..320):
+        // Gobbler 1 at x = 512 is outside camera viewport (0..320)
+        assert_eq!(scene.camera().x(), 0.0);
+        assert!(!scene.world().gobbler_data[first_gobbler.0].unwrap().is_active);
+
+        // Step physics while outside view - Gobbler should not move horizontally towards player
+        scene.update_physics(0.016);
+        assert_eq!(scene.world().velocities[first_gobbler.0].x, 0.0);
+
+        // Position camera around the Gobbler so it is inside the viewport (x in [400..720], y in [750..930])
+        scene.camera_mut().set_position(Vector2::new(400.0, 750.0));
+        scene.update_enemies(0.016);
+
+        // Gobbler is now inside camera view -> must activate and move towards player (left)
+        assert!(scene.world().gobbler_data[first_gobbler.0].unwrap().is_active);
+        assert_eq!(scene.world().velocities[first_gobbler.0].x, -ActTwoScene::GOBBLER_MOVE_SPEED);
+    }
+
+    #[test]
+    fn test_gobbler_always_moves_x_wise_to_direction_of_player() {
+        let mut scene = ActTwoScene::new();
+        let gobbler_ids = scene.gobbler_ids();
+        let gobbler_id = gobbler_ids[0];
+
+        // Put camera around gobbler so it is active
+        scene.camera_mut().set_position(Vector2::new(400.0, 750.0));
+        scene.update_enemies(0.016);
+        assert!(scene.world().gobbler_data[gobbler_id.0].unwrap().is_active);
+
+        // Gobbler position
+        let gobbler_x = scene.world().positions[gobbler_id.0].x;
+
+        // Player is to the left of Gobbler
+        let player_id = scene.player_id().unwrap();
+        scene.world_mut().positions[player_id.0].x = gobbler_x - 100.0;
+        scene.update_enemies(0.016);
+        assert_eq!(scene.world().velocities[gobbler_id.0].x, -ActTwoScene::GOBBLER_MOVE_SPEED);
+
+        // Player moves to the right of Gobbler
+        scene.world_mut().positions[player_id.0].x = gobbler_x + 100.0;
+        scene.update_enemies(0.016);
+        assert_eq!(scene.world().velocities[gobbler_id.0].x, ActTwoScene::GOBBLER_MOVE_SPEED);
+    }
+
+    #[test]
+    fn test_gobbler_falls_down_from_platform_under_gravity() {
+        let mut world = World::new();
+        let camera = GameCamera::at(0.0, 0.0);
+
+        let player = world
+            .spawn(
+                EntityType::Player,
+                Vector2::new(50.0, 50.0),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::Player,
+            )
+            .build();
+
+        // Platform from x = 100 to x = 200 at y = 100
+        world
+            .spawn(
+                EntityType::Ground,
+                Vector2::new(150.0, 100.0),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::None,
+            )
+            .with_collider(Collider::new(100.0, 20.0))
+            .with_physics(PhysicsData::static_body())
+            .build();
+
+        // Gobbler on top of platform at x = 150, resting y = 80
+        let gobbler = world
+            .spawn(
+                EntityType::Gobbler,
+                Vector2::new(150.0, 80.0),
+                Vector2::new(0.0, 0.0),
+                0.0,
+                true,
+                SpriteID::Gobbler,
+            )
+            .with_collider(Collider::new(20.0, 20.0))
+            .with_physics_preset(crate::components::PhysicsPreset::Normal)
+            .with_gobbler(40.0)
+            .build();
+
+        // Simulate walking left towards player (x = 50) off the platform (x < 100)
+        for _ in 0..120 {
+            behaviour::gobbler::update(&mut world, Some(player), &camera, 0.016);
+            physics::update(&mut world, 0.016);
+            collision::update(&mut world, 0.016);
+        }
+
+        // Gobbler walked left off the platform edge (x < 100) and fell down (y > 80)
+        assert!(world.positions[gobbler.0].x < 100.0, "Gobbler should have walked off the left edge of platform");
+        assert!(world.positions[gobbler.0].y > 80.0, "Gobbler should have fallen under gravity after walking off platform");
     }
 }
 

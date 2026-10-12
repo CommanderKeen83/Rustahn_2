@@ -326,6 +326,7 @@ pub enum MapObjectType {
     Platform,
     Spawn,
     Exit,
+    Gobbler,
     Other(String),
 }
 
@@ -335,6 +336,7 @@ impl MapObjectType {
             "platform" => MapObjectType::Platform,
             "spawn" => MapObjectType::Spawn,
             "exit" => MapObjectType::Exit,
+            "gobbler" => MapObjectType::Gobbler,
             _ => MapObjectType::Other(s.to_string()),
         }
     }
@@ -344,6 +346,7 @@ impl MapObjectType {
             MapObjectType::Platform => "Platform",
             MapObjectType::Spawn => "Spawn",
             MapObjectType::Exit => "Exit",
+            MapObjectType::Gobbler => "Gobbler",
             MapObjectType::Other(s) => s.as_str(),
         }
     }
@@ -397,6 +400,10 @@ impl MapObject {
     pub fn is_exit(&self) -> bool {
         self.object_type == MapObjectType::Exit
     }
+
+    pub fn is_gobbler(&self) -> bool {
+        self.object_type == MapObjectType::Gobbler
+    }
 }
 
 /// Type of layer in a Tiled map.
@@ -444,6 +451,7 @@ pub struct MapSpawnResult {
     pub platforms: Vec<EntityID>,
     pub spawn_point: Option<Vector2>,
     pub exits: Vec<EntityID>,
+    pub gobblers: Vec<EntityID>,
 }
 
 impl Map {
@@ -475,6 +483,11 @@ impl Map {
     /// Iterator over all exit objects.
     pub fn exits(&self) -> impl Iterator<Item = &MapObject> {
         self.all_objects().filter(|o| o.is_exit())
+    }
+
+    /// Iterator over all Gobbler enemy spawn objects.
+    pub fn gobblers(&self) -> impl Iterator<Item = &MapObject> {
+        self.all_objects().filter(|o| o.is_gobbler())
     }
 
     /// Player spawn point, if defined in the map objects.
@@ -635,6 +648,7 @@ impl Map {
             platforms: Vec::new(),
             spawn_point: self.spawn_point(),
             exits: Vec::new(),
+            gobblers: Vec::new(),
         };
 
         for obj in self.platforms() {
@@ -669,6 +683,26 @@ impl Map {
                 .with_physics(PhysicsData::static_body())
                 .build();
             result.exits.push(id);
+        }
+
+        for obj in self.gobblers() {
+            let center = obj.center();
+            let width = if obj.width > 0.0 { obj.width } else { crate::components::GobblerData::WIDTH };
+            let height = if obj.height > 0.0 { obj.height } else { crate::components::GobblerData::HEIGHT };
+            let id = world
+                .spawn(
+                    EntityType::Gobbler,
+                    center,
+                    Vector2::new(0.0, 0.0),
+                    obj.rotation,
+                    true,
+                    SpriteID::Gobbler,
+                )
+                .with_collider(Collider::new(width, height))
+                .with_physics_preset(crate::components::PhysicsPreset::Normal)
+                .with_gobbler(crate::components::GobblerData::DEFAULT_SPEED)
+                .build();
+            result.gobblers.push(id);
         }
 
         result
@@ -798,15 +832,17 @@ mod tests {
         assert_eq!(map.pixel_width(), 4480.0);
         assert_eq!(map.pixel_height(), 1120.0);
 
-        // 15 platforms + 1 Exit + 1 Spawn = 17 objects
         let platform_count = map.platforms().count();
-        assert_eq!(platform_count, 15, "Expected exactly 15 floating platforms in map1");
+        assert_eq!(platform_count, 18, "Expected 18 platforms in map1");
 
         let exit_count = map.exits().count();
         assert_eq!(exit_count, 1, "Expected 1 Exit object");
 
+        let gobbler_count = map.gobblers().count();
+        assert_eq!(gobbler_count, 3, "Expected 3 Gobbler enemy spawn objects in map1");
+
         let spawn = map.spawn_point();
-        assert_eq!(spawn, Some(Vector2::new(160.0, 544.0)));
+        assert_eq!(spawn, Some(Vector2::new(96.0, 912.0)));
     }
 
     #[test]

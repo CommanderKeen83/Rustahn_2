@@ -17,6 +17,7 @@ pub struct World {
     pub weapon_set: Vec<Option<WeaponSet>>,
     pub physics_data: Vec<Option<PhysicsData>>,
     pub colliders: Vec<Option<Collider>>,
+    pub gobbler_data: Vec<Option<GobblerData>>,
 }
 impl World {
     /// Baseline gravity (downward pull) applied globally to dynamic entities with physics (80.0).
@@ -44,6 +45,7 @@ impl World {
             weapon_set: Vec::new(),
             physics_data: Vec::new(),
             colliders: Vec::new(),
+            gobbler_data: Vec::new(),
         }
     }
     #[must_use = "call .build() to finalize the entity — dropping the builder leaks the entity slot"]
@@ -72,6 +74,7 @@ impl World {
         self.weapon_set.push(None);
         self.physics_data.push(None);
         self.colliders.push(None);
+        self.gobbler_data.push(None);
 
         Entitybuilder { world: self, id }
     }
@@ -121,6 +124,14 @@ impl<'a> Entitybuilder<'a> {
 
     pub fn with_mortality(self, mortality: Mortality) -> Self {
         self.world.mortality[self.id] = Some(mortality);
+        self
+    }
+    pub fn with_gobbler(self, speed: f32) -> Self {
+        self.world.gobbler_data[self.id] = Some(GobblerData::new(speed));
+        self
+    }
+    pub fn with_gobbler_data(self, gobbler_data: GobblerData) -> Self {
+        self.world.gobbler_data[self.id] = Some(gobbler_data);
         self
     }
     pub fn build(self) -> EntityID {
