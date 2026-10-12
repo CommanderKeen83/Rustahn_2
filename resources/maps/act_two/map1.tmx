@@ -1,25 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="22">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="43">
  <editorsettings>
   <export target="map1.json" format="json"/>
  </editorsettings>
  <objectgroup id="2" name="Platforms">
-  <object id="2" type="Platform" x="0" y="672" width="416" height="64"/>
-  <object id="3" type="Platform" x="320" y="896" width="224" height="224"/>
-  <object id="4" type="Platform" x="576" y="864" width="192" height="256"/>
-  <object id="5" type="Platform" x="480" y="640" width="128" height="64"/>
-  <object id="6" type="Platform" x="672" y="704" width="576" height="64"/>
-  <object id="7" type="Platform" x="1312" y="640" width="64" height="64"/>
-  <object id="8" type="Platform" x="1408" y="576" width="416" height="64"/>
-  <object id="9" type="Platform" x="1312" y="736" width="928" height="384"/>
-  <object id="10" type="Platform" x="1856" y="512" width="608" height="64"/>
-  <object id="11" type="Platform" x="2272" y="768" width="224" height="64"/>
-  <object id="12" type="Platform" x="2560" y="704" width="544" height="96"/>
-  <object id="13" type="Platform" x="3168" y="800" width="544" height="224"/>
-  <object id="14" type="Platform" x="3488" y="576" width="224" height="32"/>
-  <object id="15" type="Platform" x="3232" y="704" width="192" height="64"/>
-  <object id="16" type="Platform" x="3456" y="640" width="160" height="64"/>
-  <object id="17" type="Exit" x="3776" y="448" width="160" height="64"/>
-  <object id="21" type="Spawn" x="160" y="544"/>
+  <object id="22" type="Platform" x="64" y="1024" width="160" height="32"/>
+  <object id="23" x="160" y="976" width="112" height="16"/>
+  <object id="24" x="368" y="880" width="224" height="16"/>
+  <object id="25" x="544" y="976" width="160" height="32"/>
+  <object id="26" x="672" y="928" width="96" height="16"/>
+  <object id="27" x="752" y="832" width="96" height="16"/>
+  <object id="28" type="Platform" x="800" y="880" width="176" height="16"/>
+  <object id="29" type="Platform" x="976" y="784" width="208" height="32"/>
+  <object id="30" type="Platform" x="1264" y="736" width="192" height="32"/>
+  <object id="31" type="Platform" x="1392" y="848" width="112" height="272"/>
+  <object id="32" type="Platform" x="1536" y="1008" width="160" height="112"/>
+  <object id="33" type="Platform" x="1696" y="944" width="112" height="32"/>
+  <object id="34" type="Platform" x="1808" y="864" width="80" height="32"/>
+  <object id="35" type="Platform" x="1904" y="784" width="80" height="48"/>
+  <object id="36" type="Platform" x="1760" y="816" width="64" height="16"/>
+  <object id="37" type="Platform" x="2016" y="784" width="80" height="16"/>
+  <object id="38" type="Exit" x="2096" y="672" width="128" height="48"/>
+  <object id="42" type="Spawn" x="96" y="912"/>
  </objectgroup>
 </map>
