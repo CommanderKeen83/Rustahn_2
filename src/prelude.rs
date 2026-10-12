@@ -9,8 +9,8 @@ pub use crate::map::{
 };
 pub use crate::resources::ResourceManager;
 pub use crate::scenes::{
-    self, ActOne, ActOneScene, ActTwo, ActTwoInput, ActTwoScene, Asteroid, AsteroidField, Scene, SceneAction,
-    SceneManager, SceneTag,
+    self, ActOne, ActOneScene, ActThree, ActThreeScene, ActTwo, ActTwoInput, ActTwoScene, Asteroid, AsteroidField,
+    Scene, SceneAction, SceneManager, SceneTag,
 };
 pub use crate::screens;
 pub use crate::statemanager::*;

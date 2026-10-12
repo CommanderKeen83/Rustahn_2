@@ -1,4 +1,5 @@
 pub mod act_one;
+pub mod act_three;
 pub mod act_two;
 pub mod asteroid_field;
 
@@ -7,18 +8,22 @@ use sola_raylib::prelude::*;
 
 pub use crate::camera::{ActOnePhase, IntroPan, IntroPhase};
 pub use act_one::ActOneScene;
+pub use act_three::ActThreeScene;
 pub use act_two::{ActTwoInput, ActTwoScene};
 pub use asteroid_field::{Asteroid, AsteroidField};
 pub type LevelOneScene = ActOneScene;
 pub type ActOne = ActOneScene;
 pub type LevelTwoScene = ActTwoScene;
 pub type ActTwo = ActTwoScene;
+pub type LevelThreeScene = ActThreeScene;
+pub type ActThree = ActThreeScene;
 
 /// Identifiers for game scenes / acts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SceneTag {
     ActOne,
     ActTwo,
+    ActThree,
 }
 
 /// Actions a scene can request from the scene manager.

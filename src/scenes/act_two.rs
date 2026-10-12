@@ -100,7 +100,7 @@ impl ActTwoScene {
     pub const PLAYER_JUMP_IMPULSE: f32 = 300.0;
 
     /// Default maximum thruster duration in seconds (upgradeable).
-    pub const DEFAULT_MAX_THRUST_DURATION: f32 = 2.5;
+    pub const DEFAULT_MAX_THRUST_DURATION: f32 = 1.5;
 
     /// Upward thruster acceleration in virtual px/s^2.
     /// Overcomes downward gravity (240.0 px/s^2) to smoothly curve out of falls and climb upward.
@@ -543,6 +543,43 @@ impl ActTwoScene {
             }
         }
     }
+
+    /// Returns true if the player has entered the exit rectangle.
+    pub fn is_player_at_exit(&self) -> bool {
+        let Some(player_id) = self.player_id else { return false };
+        if player_id.0 >= self.world.next_entity_id || !self.world.alive[player_id.0] {
+            return false;
+        }
+        let Some(player_col) = self.world.colliders[player_id.0] else { return false };
+        let player_pos = self.world.positions[player_id.0];
+        let (p_min_x, p_min_y, p_max_x, p_max_y) = player_col.aabb(player_pos);
+
+        if let Some(map_res) = &self.map_entities {
+            for &exit_id in &map_res.exits {
+                if exit_id.0 < self.world.next_entity_id && self.world.alive[exit_id.0] {
+                    if let Some(exit_col) = self.world.colliders[exit_id.0] {
+                        let exit_pos = self.world.positions[exit_id.0];
+                        let (e_min_x, e_min_y, e_max_x, e_max_y) = exit_col.aabb(exit_pos);
+                        let overlap_x = p_max_x.min(e_max_x) - p_min_x.max(e_min_x);
+                        let overlap_y = p_max_y.min(e_max_y) - p_min_y.max(e_min_y);
+                        if overlap_x > 0.0 && overlap_y > 0.0 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Checks if a transition should occur to Act Three upon reaching the exit rectangle.
+    pub fn check_transition(&self) -> Option<SceneAction> {
+        if self.is_player_at_exit() {
+            Some(SceneAction::Switch(Box::new(ActThreeScene::new())))
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for ActTwoScene {
@@ -566,7 +603,8 @@ impl Scene for ActTwoScene {
         self.handle_input(&input);
 
         self.update_physics(ctx.dt);
-        None
+
+        self.check_transition()
     }
 
     fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager) {
@@ -1724,6 +1762,64 @@ mod tests {
         let map_res = scene.map_entities().expect("MapSpawnResult should be present on ActTwoScene::new()");
         assert_eq!(map_res.platforms.len(), 15);
         assert_eq!(map_res.exits.len(), 1);
+    }
+
+    #[test]
+    fn test_player_reaches_exit_triggers_act_three() {
+        let mut scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        // Initially at spawn (160, 544), player is not at exit
+        assert!(!scene.is_player_at_exit());
+        assert!(scene.check_transition().is_none());
+
+        // Move player to the center of the exit rectangle
+        let map_res = scene.map_entities().expect("MapSpawnResult expected");
+        assert!(!map_res.exits.is_empty(), "Map should contain at least one Exit object");
+        let exit_id = map_res.exits[0];
+        let exit_pos = scene.world().positions[exit_id.0];
+        scene.world_mut().positions[player_id.0] = exit_pos;
+        assert!(scene.is_player_at_exit(), "Player should be detected inside exit rectangle");
+
+        let action = scene.check_transition();
+        assert!(action.is_some(), "check_transition should return Some(SceneAction::Switch)");
+        match action.unwrap() {
+            SceneAction::Switch(next_scene) => {
+                assert_eq!(next_scene.tag(), Some(SceneTag::ActThree));
+            }
+        }
+    }
+
+    #[test]
+    fn test_act_two_exit_transition_through_scene_manager() {
+        let scene = ActTwoScene::new();
+        let player_id = scene.player_id().unwrap();
+
+        let mut scene_manager = SceneManager::new(Box::new(scene));
+        assert_eq!(scene_manager.current_tag(), Some(SceneTag::ActTwo));
+
+        // Teleport player into the exit zone
+        {
+            let current = scene_manager.current_scene_mut();
+            let act_two = current.as_any_mut().downcast_mut::<ActTwoScene>().unwrap();
+            let exit_id = act_two.map_entities().unwrap().exits[0];
+            let exit_pos = act_two.world().positions[exit_id.0];
+            act_two.world_mut().positions[player_id.0] = exit_pos;
+            assert!(act_two.is_player_at_exit());
+        }
+
+        // Trigger transition via SceneAction
+        let action = {
+            let current = scene_manager.current_scene_mut();
+            let act_two = current.as_any_mut().downcast_mut::<ActTwoScene>().unwrap();
+            act_two.check_transition()
+        };
+
+        if let Some(SceneAction::Switch(next)) = action {
+            scene_manager.switch_scene(next);
+        }
+
+        assert_eq!(scene_manager.current_tag(), Some(SceneTag::ActThree));
     }
 }
 

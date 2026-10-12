@@ -39,11 +39,13 @@ impl Screen for Game {
         }
 
         // Quick debug hotkeys for testing mechanics across acts:
-        // F1 -> Switch to Act One, F2 -> Switch to Act Two
+        // F1 -> Switch to Act One, F2 -> Switch to Act Two, F3 -> Switch to Act Three
         if ctx.rl.is_key_pressed(KeyboardKey::KEY_F1) {
             self.scene_manager.switch_scene(Box::new(ActOneScene::new()));
         } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_F2) {
             self.scene_manager.switch_scene(Box::new(ActTwoScene::new()));
+        } else if ctx.rl.is_key_pressed(KeyboardKey::KEY_F3) {
+            self.scene_manager.switch_scene(Box::new(ActThreeScene::new()));
         }
 
         self.scene_manager.update(ctx);

@@ -204,22 +204,25 @@ impl<'a> JsonParser<'a> {
 
     fn parse_string(&mut self) -> Result<String, String> {
         self.cursor += 1; // consume opening '"'
-        let mut s = String::new();
+        let mut buf: Vec<u8> = Vec::new();
 
         while let Some(b) = self.next_byte() {
             match b {
-                b'"' => return Ok(s),
+                b'"' => {
+                    return String::from_utf8(buf)
+                        .map_err(|e| format!("Invalid UTF-8 in string: {}", e));
+                }
                 b'\\' => {
                     let esc = self.next_byte().ok_or("Unexpected end of string escape")?;
                     match esc {
-                        b'"' => s.push('"'),
-                        b'\\' => s.push('\\'),
-                        b'/' => s.push('/'),
-                        b'b' => s.push('\x08'),
-                        b'f' => s.push('\x0c'),
-                        b'n' => s.push('\n'),
-                        b'r' => s.push('\r'),
-                        b't' => s.push('\t'),
+                        b'"' => buf.push(b'"'),
+                        b'\\' => buf.push(b'\\'),
+                        b'/' => buf.push(b'/'),
+                        b'b' => buf.push(0x08),
+                        b'f' => buf.push(0x0C),
+                        b'n' => buf.push(b'\n'),
+                        b'r' => buf.push(b'\r'),
+                        b't' => buf.push(b'\t'),
                         b'u' => {
                             let mut hex = String::with_capacity(4);
                             for _ in 0..4 {
@@ -229,7 +232,8 @@ impl<'a> JsonParser<'a> {
                             let code = u32::from_str_radix(&hex, 16)
                                 .map_err(|e| format!("Invalid unicode escape \\u{}: {}", hex, e))?;
                             let ch = char::from_u32(code).ok_or("Invalid unicode scalar value")?;
-                            s.push(ch);
+                            let mut tmp = [0u8; 4];
+                            buf.extend_from_slice(ch.encode_utf8(&mut tmp).as_bytes());
                         }
                         other => {
                             return Err(format!(
@@ -239,7 +243,7 @@ impl<'a> JsonParser<'a> {
                         }
                     }
                 }
-                normal => s.push(normal as char),
+                normal => buf.push(normal),
             }
         }
 
@@ -368,6 +372,10 @@ impl MapObject {
     pub fn center(&self) -> Vector2 {
         if self.width <= 0.0 && self.height <= 0.0 {
             Vector2::new(self.x, self.y)
+        } else if self.rotation != 0.0 {
+            let (s, c) = self.rotation.to_radians().sin_cos();
+            let (hx, hy) = (self.width * 0.5, self.height * 0.5);
+            Vector2::new(self.x + hx * c - hy * s, self.y + hx * s + hy * c)
         } else {
             Vector2::new(self.x + self.width * 0.5, self.y + self.height * 0.5)
         }
@@ -571,7 +579,8 @@ impl Map {
                         let obj_type_str = o_val
                             .get("type")
                             .and_then(|v| v.as_str())
-                            .or_else(|| o_val.get("class").and_then(|v| v.as_str()))
+                            .filter(|s| !s.is_empty())
+                            .or_else(|| o_val.get("class").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
                             .unwrap_or("");
                         let object_type = MapObjectType::from_str_type(obj_type_str);
 
@@ -867,5 +876,65 @@ mod tests {
             landed_pos.y
         );
         assert_eq!(world.velocities[player_id.0].y, 0.0);
+    }
+
+    #[test]
+    fn test_parse_utf8_strings() {
+        let json = r#"{"name": "Gegner üö äß", "escape": "hello\nworld \u00e4\u00f6", "emoji": "🚀"}"#;
+        let mut parser = JsonParser::new(json);
+        let val = parser.parse_value().expect("Should parse valid UTF-8 JSON");
+        assert_eq!(val.get("name").and_then(|v| v.as_str()), Some("Gegner üö äß"));
+        assert_eq!(val.get("escape").and_then(|v| v.as_str()), Some("hello\nworld äö"));
+        assert_eq!(val.get("emoji").and_then(|v| v.as_str()), Some("🚀"));
+    }
+
+    #[test]
+    fn test_empty_type_falls_back_to_class() {
+        let json = r#"{
+            "width": 10, "height": 10, "tilewidth": 16, "tileheight": 16,
+            "layers": [{
+                "id": 1, "name": "Obj", "type": "objectgroup", "visible": true, "opacity": 1.0,
+                "objects": [
+                    { "id": 1, "name": "p1", "type": "", "class": "Platform", "x": 10, "y": 20, "width": 30, "height": 10 },
+                    { "id": 2, "name": "e1", "type": "", "class": "Exit", "x": 50, "y": 20, "width": 10, "height": 10 },
+                    { "id": 3, "name": "s1", "type": "", "class": "Spawn", "x": 5, "y": 5, "width": 0, "height": 0 }
+                ]
+            }]
+        }"#;
+        let map = Map::from_json_str(json).expect("Should parse map with empty type and filled class");
+        assert_eq!(map.platforms().count(), 1);
+        assert_eq!(map.exits().count(), 1);
+        assert_eq!(map.spawn_point(), Some(Vector2::new(5.0, 5.0)));
+    }
+
+    #[test]
+    fn test_rotated_object_center() {
+        let obj_90 = MapObject {
+            id: 1,
+            name: "rotated".to_string(),
+            object_type: MapObjectType::Platform,
+            x: 100.0,
+            y: 100.0,
+            width: 20.0,
+            height: 10.0,
+            rotation: 90.0,
+            visible: true,
+        };
+        let c = obj_90.center();
+        assert!((c.x - 95.0).abs() < 1e-4, "Expected center.x ~ 95.0, got {}", c.x);
+        assert!((c.y - 110.0).abs() < 1e-4, "Expected center.y ~ 110.0, got {}", c.y);
+
+        let obj_0 = MapObject {
+            id: 2,
+            name: "unrotated".to_string(),
+            object_type: MapObjectType::Platform,
+            x: 100.0,
+            y: 100.0,
+            width: 20.0,
+            height: 10.0,
+            rotation: 0.0,
+            visible: true,
+        };
+        assert_eq!(obj_0.center(), Vector2::new(110.0, 105.0));
     }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="22">
  <editorsettings>
-  <export target="map1" format="json"/>
+  <export target="map1.json" format="json"/>
  </editorsettings>
  <objectgroup id="2" name="Platforms">
   <object id="2" type="Platform" x="0" y="672" width="416" height="64"/>
@@ -9,14 +9,14 @@
   <object id="4" type="Platform" x="576" y="864" width="192" height="256"/>
   <object id="5" type="Platform" x="480" y="640" width="128" height="64"/>
   <object id="6" type="Platform" x="672" y="704" width="576" height="64"/>
-  <object id="7" type="Platform" x="1312" y="608" width="64" height="96"/>
+  <object id="7" type="Platform" x="1312" y="640" width="64" height="64"/>
   <object id="8" type="Platform" x="1408" y="576" width="416" height="64"/>
   <object id="9" type="Platform" x="1312" y="736" width="928" height="384"/>
   <object id="10" type="Platform" x="1856" y="512" width="608" height="64"/>
   <object id="11" type="Platform" x="2272" y="768" width="224" height="64"/>
   <object id="12" type="Platform" x="2560" y="704" width="544" height="96"/>
   <object id="13" type="Platform" x="3168" y="800" width="544" height="224"/>
-  <object id="14" type="Platform" x="3488" y="544" width="224" height="64"/>
+  <object id="14" type="Platform" x="3488" y="576" width="224" height="32"/>
   <object id="15" type="Platform" x="3232" y="704" width="192" height="64"/>
   <object id="16" type="Platform" x="3456" y="640" width="160" height="64"/>
   <object id="17" type="Exit" x="3776" y="448" width="160" height="64"/>
