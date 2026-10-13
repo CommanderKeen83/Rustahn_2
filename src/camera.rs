@@ -107,6 +107,24 @@ impl GameCamera {
         }
     }
 
+    /// Converts a screen pixel coordinate (e.g. from mouse input) into virtual world coordinates,
+    /// accounting for window letterboxing/scaling and camera viewport offset.
+    pub fn screen_to_virtual_world(&self, screen_pos: Vector2, window_width: f32, window_height: f32) -> Vector2 {
+        let game_w = GAME_WIDTH as f32;
+        let game_h = GAME_HEIGHT as f32;
+        let scale = (window_width / game_w).min(window_height / game_h).max(0.001);
+        let offset_x = (window_width - (game_w * scale)) * 0.5;
+        let offset_y = (window_height - (game_h * scale)) * 0.5;
+
+        let canvas_x = (screen_pos.x - offset_x) / scale;
+        let canvas_y = (screen_pos.y - offset_y) / scale;
+
+        let world_x = self.x() + canvas_x / VIRTUAL_SCALE;
+        let world_y = self.y() + canvas_y / VIRTUAL_SCALE;
+
+        Vector2::new(world_x, world_y)
+    }
+
     /// Computes the target camera top-left position needed to center an entity at `center`.
     pub fn target_for_center(&self, center: Vector2) -> Vector2 {
         Vector2::new(
@@ -271,5 +289,17 @@ mod tests {
         cam.set_x(-50.0);
         cam.clamp_min_x(0.0);
         assert_eq!(cam.x(), 0.0);
+    }
+
+    #[test]
+    fn test_camera_screen_to_virtual_world() {
+        let cam = GameCamera::at(100.0, 50.0);
+        // Window size matches game width/height (1280x720)
+        let screen_pos = Vector2::new(640.0, 360.0);
+        let world = cam.screen_to_virtual_world(screen_pos, 1280.0, 720.0);
+        // Canvas center: 640/4 = 160, 360/4 = 90.
+        // World: 100 + 160 = 260, 50 + 90 = 140.
+        assert_eq!(world.x, 260.0);
+        assert_eq!(world.y, 140.0);
     }
 }

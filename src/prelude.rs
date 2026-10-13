@@ -14,7 +14,8 @@ pub use crate::scenes::{
 pub use crate::screens;
 pub use crate::statemanager::*;
 pub use crate::systems::collision::CollisionEvent;
+pub use crate::systems::hook::{GrapplingHook, HookState, HookUpdateResult};
 pub use crate::systems::input::PlayerInput;
-pub use crate::systems::{behaviour, collision, input, physics};
+pub use crate::systems::{behaviour, collision, hook, input, physics};
 pub use crate::types::*;
 pub use crate::window::*;

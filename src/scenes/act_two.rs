@@ -4,12 +4,15 @@ use crate::systems::collision;
 use sola_raylib::prelude::*;
 
 /// Player input state for Act Two platformer mechanics.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ActTwoInput {
     pub left: bool,
     pub right: bool,
+    pub up: bool,
     pub jump: bool,
     pub jump_held: bool,
+    pub hook_click: bool,
+    pub mouse_pos: Vector2,
 }
 
 impl ActTwoInput {
@@ -17,8 +20,11 @@ impl ActTwoInput {
         Self {
             left,
             right,
+            up: false,
             jump,
             jump_held: jump,
+            hook_click: false,
+            mouse_pos: Vector2::new(0.0, 0.0),
         }
     }
 
@@ -27,12 +33,26 @@ impl ActTwoInput {
         self
     }
 
+    pub fn with_up(mut self, up: bool) -> Self {
+        self.up = up;
+        self
+    }
+
+    pub fn with_hook_click(mut self, click: bool, mouse_pos: Vector2) -> Self {
+        self.hook_click = click;
+        self.mouse_pos = mouse_pos;
+        self
+    }
+
     pub fn from_raylib(rl: &RaylibHandle) -> Self {
         Self {
             left: rl.is_key_down(KeyboardKey::KEY_LEFT) || rl.is_key_down(KeyboardKey::KEY_A),
             right: rl.is_key_down(KeyboardKey::KEY_RIGHT) || rl.is_key_down(KeyboardKey::KEY_D),
+            up: rl.is_key_down(KeyboardKey::KEY_UP) || rl.is_key_down(KeyboardKey::KEY_W),
             jump: rl.is_key_pressed(KeyboardKey::KEY_SPACE),
             jump_held: rl.is_key_down(KeyboardKey::KEY_SPACE),
+            hook_click: rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT),
+            mouse_pos: rl.get_mouse_position(),
         }
     }
 }
@@ -60,6 +80,10 @@ pub struct ActTwoScene {
     jump_held: bool,
     spawn_pos: Vector2,
     map_entities: Option<MapSpawnResult>,
+    pub hook: GrapplingHook,
+    last_input: ActTwoInput,
+    window_width: f32,
+    window_height: f32,
 }
 
 impl ActTwoScene {
@@ -189,6 +213,10 @@ impl ActTwoScene {
             jump_held: false,
             spawn_pos: Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y),
             map_entities: None,
+            hook: GrapplingHook::new(),
+            last_input: ActTwoInput::default(),
+            window_width: GAME_WIDTH as f32,
+            window_height: GAME_HEIGHT as f32,
         }
     }
 
@@ -236,6 +264,10 @@ impl ActTwoScene {
             jump_held: false,
             spawn_pos,
             map_entities: Some(map_entities),
+            hook: GrapplingHook::new(),
+            last_input: ActTwoInput::default(),
+            window_width: GAME_WIDTH as f32,
+            window_height: GAME_HEIGHT as f32,
         }
     }
 
@@ -408,8 +440,10 @@ impl ActTwoScene {
     }
 
     /// Handles platformer inputs for the player:
-    /// - Arrow-Left / A: move left
-    /// - Arrow-Right / D: move right
+    /// - Mouse Click: throws a grappling hook in the clicked direction (up to 30 px)
+    /// - Arrow-Up / W while attached: pulls player up on the rope
+    /// - Arrow-Left / A and Arrow-Right / D: moves or swings along the rope
+    /// - Space pressed on rope: dissolves rope and jumps with accumulated momentum
     /// - Space pressed on ground: jump (initiates delayed thruster window)
     /// - Space held continuously: engages thrusters once the delay window elapses
     /// - Space pressed while airborne (after release): engages thrusters immediately
@@ -419,7 +453,26 @@ impl ActTwoScene {
             return;
         }
 
+        self.last_input = *input;
         self.jump_held = input.jump_held;
+
+        // Mouse click throws the grappling hook
+        if input.hook_click {
+            let target_world = self.camera.screen_to_virtual_world(
+                input.mouse_pos,
+                self.window_width,
+                self.window_height,
+            );
+            let player_pos = self.world.positions[player_id.0];
+            self.hook.throw_hook(player_pos, target_world, &self.world, player_id.0);
+        }
+
+        // While attached to the rope, the rope simulation governs motion and swinging!
+        if self.hook.is_attached() {
+            self.is_thrusting = false;
+            self.thrust_delay_timer = 0.0;
+            return;
+        }
 
         // Horizontal movement: left and right arrow keys
         if input.left && !input.right {
@@ -462,6 +515,7 @@ impl ActTwoScene {
     /// Resets the player entity back to the center of the viewport with zero velocity and full fuel,
     /// and resets the camera to (0, 0).
     pub fn reset_player(&mut self) {
+        self.hook.dissolve();
         self.is_thrusting = false;
         self.thrust_delay_timer = 0.0;
         self.jump_held = false;
@@ -494,36 +548,61 @@ impl ActTwoScene {
             return;
         };
 
-        // Count down thruster delay if Space is held continuously from a ground jump
-        if self.thrust_delay_timer > 0.0 && dt > 0.0 {
-            self.thrust_delay_timer = (self.thrust_delay_timer - dt).max(0.0);
-            if self.thrust_delay_timer == 0.0 && self.jump_held && !self.is_player_grounded() && self.thrust_fuel > 0.0 {
-                self.is_thrusting = true;
-            }
-        }
-
-        if self.is_thrusting && self.thrust_fuel > 0.0 && dt > 0.0 {
-            // Deplete thruster fuel
-            self.thrust_fuel = (self.thrust_fuel - dt).max(0.0);
-            if self.thrust_fuel == 0.0 {
+        if self.hook.is_attached() {
+            let res = self.hook.update(
+                &mut self.world,
+                player_id.0,
+                self.last_input.up,
+                self.last_input.left,
+                self.last_input.right,
+                self.last_input.jump,
+                Self::PLAYER_JUMP_IMPULSE,
+                dt,
+            );
+            if res.dissolved_and_jumped {
+                self.thrust_delay_timer = self.thrust_activation_delay;
                 self.is_thrusting = false;
             }
+        } else {
+            self.hook.update_miss(dt);
 
-            // Apply upward thrust acceleration to smoothly curve vertical trajectory
-            if self.world.velocities[player_id.0].y > -Self::MAX_THRUST_SPEED {
-                self.world.velocities[player_id.0].y -= Self::THRUST_ACCELERATION * dt;
-                if self.world.velocities[player_id.0].y < -Self::MAX_THRUST_SPEED {
-                    self.world.velocities[player_id.0].y = -Self::MAX_THRUST_SPEED;
+            // Count down thruster delay if Space is held continuously from a ground jump
+            if self.thrust_delay_timer > 0.0 && dt > 0.0 {
+                self.thrust_delay_timer = (self.thrust_delay_timer - dt).max(0.0);
+                if self.thrust_delay_timer == 0.0 && self.jump_held && !self.is_player_grounded() && self.thrust_fuel > 0.0 {
+                    self.is_thrusting = true;
                 }
             }
+
+            if self.is_thrusting && self.thrust_fuel > 0.0 && dt > 0.0 {
+                // Deplete thruster fuel
+                self.thrust_fuel = (self.thrust_fuel - dt).max(0.0);
+                if self.thrust_fuel == 0.0 {
+                    self.is_thrusting = false;
+                }
+
+                // Apply upward thrust acceleration to smoothly curve vertical trajectory
+                if self.world.velocities[player_id.0].y > -Self::MAX_THRUST_SPEED {
+                    self.world.velocities[player_id.0].y -= Self::THRUST_ACCELERATION * dt;
+                    if self.world.velocities[player_id.0].y < -Self::MAX_THRUST_SPEED {
+                        self.world.velocities[player_id.0].y = -Self::MAX_THRUST_SPEED;
+                    }
+                }
+            }
+
+            // Standard physics integration
+            physics::update(&mut self.world, dt);
         }
 
-        // Update enemy AI behaviour before physics integration
+        // Update enemy AI behaviour before physics integration / collision
         self.update_enemies(dt);
 
-        // Standard physics integration and collision resolution
-        physics::update(&mut self.world, dt);
+        // Standard collision resolution
         collision::update(&mut self.world, dt);
+
+        if self.hook.is_attached() {
+            self.hook.post_collision_adjust(self.world.positions[player_id.0]);
+        }
 
         if player_id.0 < self.world.next_entity_id && self.world.alive[player_id.0] {
             // Slowly recharge thruster fuel and reset delay when resting on solid ground or platform
@@ -531,8 +610,10 @@ impl ActTwoScene {
                 if self.thrust_fuel < self.max_thrust_duration && dt > 0.0 {
                     self.thrust_fuel = (self.thrust_fuel + self.thrust_recharge_rate * dt).min(self.max_thrust_duration);
                 }
-                self.is_thrusting = false;
-                self.thrust_delay_timer = 0.0;
+                if !self.hook.is_attached() {
+                    self.is_thrusting = false;
+                    self.thrust_delay_timer = 0.0;
+                }
             }
 
             // Update camera to smoothly follow the player with a rubber-band effect
@@ -596,6 +677,21 @@ impl ActTwoScene {
         false
     }
 
+    /// Returns a reference to the grappling hook.
+    pub fn hook(&self) -> &GrapplingHook {
+        &self.hook
+    }
+
+    /// Returns a mutable reference to the grappling hook.
+    pub fn hook_mut(&mut self) -> &mut GrapplingHook {
+        &mut self.hook
+    }
+
+    /// Returns true if the grappling hook is currently anchored to a wall/platform.
+    pub fn is_hook_attached(&self) -> bool {
+        self.hook.is_attached()
+    }
+
     /// Checks if a transition should occur to Act Three upon reaching the exit rectangle.
     pub fn check_transition(&self) -> Option<SceneAction> {
         if self.is_player_at_exit() {
@@ -623,8 +719,25 @@ impl Scene for ActTwoScene {
             self.reset_player();
         }
 
+        // Press F4 to switch to minimal test sandbox
+        if ctx.rl.is_key_pressed(KeyboardKey::KEY_F4) {
+            return Some(SceneAction::Switch(Box::new(Self::test_sandbox())));
+        }
+
+        self.window_width = ctx.rl.get_screen_width() as f32;
+        self.window_height = ctx.rl.get_screen_height() as f32;
+
         let input = ActTwoInput::from_raylib(ctx.rl);
+        let was_attached_before = self.hook.is_attached();
         self.handle_input(&input);
+
+        if input.hook_click {
+            if self.hook.is_attached() && !was_attached_before {
+                ctx.audio.play_sfx(SoundID::Fireball_hit_Wall);
+            } else if !self.hook.is_attached() {
+                ctx.audio.play_sfx(SoundID::FireballShot);
+            }
+        }
 
         self.update_physics(ctx.dt);
 
@@ -704,6 +817,14 @@ impl Scene for ActTwoScene {
             }
         }
 
+        // Draw grappling hook rope, anchor point, and miss effect
+        if let Some(player_id) = self.player_id {
+            if player_id.0 < self.world.next_entity_id && self.world.alive[player_id.0] {
+                let pos = self.world.positions[player_id.0];
+                self.hook.draw(canvas, &self.camera, pos);
+            }
+        }
+
         // Draw minimal HUD thruster fuel gauge in upper-left corner
         let bar_x = 12.0 * VIRTUAL_SCALE;
         let bar_y = 10.0 * VIRTUAL_SCALE;
@@ -730,6 +851,15 @@ impl Scene for ActTwoScene {
                 fuel_color,
             );
         }
+
+        // Controls hint overlay
+        canvas.draw_text(
+            "Controls: Mouse-Click = Throw Hook (30px) | Up = Pull Up | Left/Right = Swing | Space = Detach & Jump",
+            12,
+            GAME_HEIGHT - 24,
+            14,
+            Color::new(180, 180, 190, 180),
+        );
     }
 
     fn tag(&self) -> Option<SceneTag> {
@@ -1983,6 +2113,146 @@ mod tests {
         // Gobbler walked left off the platform edge (x < 100) and fell down (y > 80)
         assert!(world.positions[gobbler.0].x < 100.0, "Gobbler should have walked off the left edge of platform");
         assert!(world.positions[gobbler.0].y > 80.0, "Gobbler should have fallen under gravity after walking off platform");
+    }
+
+    #[test]
+    fn test_act_two_mouse_click_throws_hook_and_attaches_to_platform() {
+        let mut scene = ActTwoScene::test_sandbox();
+        let player_id = scene.player_id().unwrap();
+
+        // Place player directly under platform at x = 90.0, resting on floor (y = 150.0)
+        // Platform is at x = 90.0, y = 120.0, height = 12.0 (bottom edge at 126.0)
+        // Distance is 150 - 126 = 24 px (well within the 30 px hook reach)
+        scene.world_mut().positions[player_id.0] = Vector2::new(90.0, 150.0);
+        assert!(!scene.is_hook_attached());
+
+        // Mouse click on the platform:
+        // Convert virtual (90, 120) to screen coords: (90 - camera.x) * 4 = 360, (120 - camera.y) * 4 = 480
+        let screen_mouse = Vector2::new(90.0 * VIRTUAL_SCALE, 120.0 * VIRTUAL_SCALE);
+        let input = ActTwoInput::new(false, false, false).with_hook_click(true, screen_mouse);
+        scene.handle_input(&input);
+
+        assert!(scene.is_hook_attached(), "Hook should attach to platform within 30 px reach");
+        let anchor = scene.hook().anchor().unwrap();
+        assert_eq!(anchor.x, 90.0);
+        assert_eq!(anchor.y, 126.0); // Platform bottom edge
+        assert!((scene.hook().rope_length().unwrap() - 24.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_act_two_pull_up_lifts_player_off_ground() {
+        let mut scene = ActTwoScene::test_sandbox();
+        let player_id = scene.player_id().unwrap();
+
+        // Place player under platform and attach hook
+        scene.world_mut().positions[player_id.0] = Vector2::new(90.0, 150.0);
+        let screen_mouse = Vector2::new(90.0 * VIRTUAL_SCALE, 120.0 * VIRTUAL_SCALE);
+        scene.handle_input(&ActTwoInput::new(false, false, false).with_hook_click(true, screen_mouse));
+        assert!(scene.is_hook_attached());
+        assert!(scene.is_player_grounded());
+
+        // Hold Arrow Up for 0.15s to pull up on the rope
+        for _ in 0..10 {
+            scene.handle_input(&ActTwoInput::new(false, false, false).with_up(true));
+            scene.update_physics(0.016);
+        }
+
+        let player_y = scene.world().positions[player_id.0].y;
+        assert!(
+            player_y < 150.0,
+            "Player should have been lifted upward towards anchor, got y = {}",
+            player_y
+        );
+        let new_len = scene.hook().rope_length().unwrap();
+        assert!(new_len < 24.0, "Rope length should have shortened from 24 px, got {}", new_len);
+    }
+
+    #[test]
+    fn test_act_two_swing_left_and_right_builds_momentum() {
+        let mut scene = ActTwoScene::test_sandbox();
+        let player_id = scene.player_id().unwrap();
+
+        // Attach hook to platform and pull up slightly so player is suspended in mid-air
+        scene.world_mut().positions[player_id.0] = Vector2::new(90.0, 142.0);
+        let screen_mouse = Vector2::new(90.0 * VIRTUAL_SCALE, 120.0 * VIRTUAL_SCALE);
+        scene.handle_input(&ActTwoInput::new(false, false, false).with_hook_click(true, screen_mouse));
+        assert!(scene.is_hook_attached());
+
+        // Hold Arrow Right to swing right
+        for _ in 0..15 {
+            scene.handle_input(&ActTwoInput::new(false, true, false));
+            scene.update_physics(0.016);
+        }
+
+        let vel = scene.world().velocities[player_id.0];
+        assert!(
+            vel.x > 20.0,
+            "Player should build up rightward swing momentum, got vx = {}",
+            vel.x
+        );
+        let pos = scene.world().positions[player_id.0];
+        assert!(pos.x > 90.0, "Player should have swung right of anchor, got x = {}", pos.x);
+
+        // Now hold Arrow Left to swing back left
+        for _ in 0..25 {
+            scene.handle_input(&ActTwoInput::new(true, false, false));
+            scene.update_physics(0.016);
+        }
+
+        let vel_left = scene.world().velocities[player_id.0];
+        assert!(
+            vel_left.x < 0.0,
+            "Player should swing left with momentum when holding Arrow Left, got vx = {}",
+            vel_left.x
+        );
+    }
+
+    #[test]
+    fn test_act_two_space_dissolves_rope_and_jumps() {
+        let mut scene = ActTwoScene::test_sandbox();
+        let player_id = scene.player_id().unwrap();
+
+        // Suspended on rope, swinging right with speed
+        scene.world_mut().positions[player_id.0] = Vector2::new(100.0, 138.0);
+        scene.world_mut().velocities[player_id.0] = Vector2::new(150.0, -40.0);
+        let screen_mouse = Vector2::new(90.0 * VIRTUAL_SCALE, 120.0 * VIRTUAL_SCALE);
+        scene.handle_input(&ActTwoInput::new(false, false, false).with_hook_click(true, screen_mouse));
+        assert!(scene.is_hook_attached());
+
+        // Press Space to release rope and jump
+        let jump_input = ActTwoInput::new(false, false, true);
+        scene.handle_input(&jump_input);
+        scene.update_physics(0.016);
+
+        // Rope dissolved!
+        assert!(!scene.is_hook_attached(), "Rope must dissolve when Space is pressed");
+        // Player launched upward!
+        let vel = scene.world().velocities[player_id.0];
+        assert!(
+            vel.y <= -ActTwoScene::PLAYER_JUMP_IMPULSE * 0.75,
+            "Player should jump upward upon rope dissolving, got vy = {}",
+            vel.y
+        );
+        assert!(
+            vel.x > 50.0,
+            "Horizontal swing momentum must be preserved on release, got vx = {}",
+            vel.x
+        );
+    }
+
+    #[test]
+    fn test_act_two_missed_hook_does_not_attach() {
+        let mut scene = ActTwoScene::test_sandbox();
+        let _player_id = scene.player_id().unwrap();
+
+        // Player at spawn (160, 90). Clicking into empty air to the right (x=200, y=90)
+        // No platform or wall within 30 px
+        let screen_mouse = Vector2::new(200.0 * VIRTUAL_SCALE, 90.0 * VIRTUAL_SCALE);
+        let input = ActTwoInput::new(false, false, false).with_hook_click(true, screen_mouse);
+        scene.handle_input(&input);
+
+        assert!(!scene.is_hook_attached(), "Hook should not attach when nothing is in range");
+        assert!(matches!(scene.hook().state, HookState::Missed { .. }));
     }
 }
 
