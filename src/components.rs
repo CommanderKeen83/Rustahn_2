@@ -110,6 +110,7 @@ impl Default for GobblerData {
 use crate::types::EntityType;
 use sola_raylib::prelude::*;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Collider {
@@ -251,7 +252,7 @@ impl PhysicsData {
     /// - `Heavy`: `gravity_scale = HEAVY_GRAVITY_SCALE` (1.5), `max_fall_speed = None` (drops rapidly)
     pub fn preset(preset: PhysicsPreset) -> Self {
         let config = PhysicsConfig::global();
-        Self::from_config(&config, preset)
+        Self::from_config(config, preset)
     }
 
     pub fn light() -> Self {
@@ -423,14 +424,17 @@ impl PhysicsConfig {
         std::fs::read_to_string(path).ok().map(|content| Self::parse_str(&content))
     }
 
-    pub fn global() -> Self {
-        if let Some(cfg) = Self::load_from_file("resources/physics.cfg") {
-            return cfg;
-        }
-        if let Some(cfg) = Self::load_from_file("physics.cfg") {
-            return cfg;
-        }
-        Self::default()
+    pub fn global() -> &'static Self {
+        static GLOBAL: OnceLock<PhysicsConfig> = OnceLock::new();
+        GLOBAL.get_or_init(|| {
+            if let Some(cfg) = Self::load_from_file("resources/physics.cfg") {
+                return cfg;
+            }
+            if let Some(cfg) = Self::load_from_file("physics.cfg") {
+                return cfg;
+            }
+            Self::default()
+        })
     }
 
     pub fn get_for_type(&self, tag: EntityType) -> Option<PhysicsData> {

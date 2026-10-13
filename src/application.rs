@@ -6,7 +6,6 @@ use std::collections::HashMap;
 pub struct Application<'aud> {
     resource_manager: ResourceManager, // must drop before window, since window holds Raylib context, otherwise SEGFAULT
     statemanager: StateManager,        // must drop before window to unload shaders safely, otherwise SEGFAULT
-    gamestate: Gamestate,
     music_tracks: HashMap<MusicID, Music<'aud>>,  // must drop before window
     sound_effects: HashMap<SoundID, Sound<'aud>>, // must drop before window
     current_music: Option<MusicID>,
@@ -72,7 +71,6 @@ impl<'aud> Application<'aud> {
         Self {
             resource_manager,
             statemanager,
-            gamestate: Gamestate::new(),
             music_tracks,
             sound_effects,
             current_music: None,

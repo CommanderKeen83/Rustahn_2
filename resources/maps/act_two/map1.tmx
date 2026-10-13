@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="43">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="50">
  <editorsettings>
   <export target="map1.json" format="json"/>
  </editorsettings>
@@ -22,5 +22,10 @@
   <object id="37" type="Platform" x="2016" y="784" width="80" height="16"/>
   <object id="38" type="Exit" x="2096" y="672" width="128" height="48"/>
   <object id="42" type="Spawn" x="96" y="912"/>
+  <object id="45" type="Platform" x="0" y="1088" width="1376" height="32"/>
+  <object id="46" type="Platform" x="1696" y="1088" width="1024" height="32"/>
+  <object id="47" type="Gobbler" x="512" y="800"/>
+  <object id="48" type="Gobbler" x="928" y="768"/>
+  <object id="49" type="Gobbler" x="1376" y="640"/>
  </objectgroup>
 </map>
