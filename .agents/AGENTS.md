@@ -25,9 +25,12 @@ Single crate (not a workspace). Binary (`main.rs`) + library (`lib.rs`).
 
 ## Release Build & OpenGL FBO Workaround
 
-- In `Cargo.toml`, we must keep `debug-assertions = true` in the `[profile.release]` configuration.
-- **Reason:** In standard Release builds, CMake compiles the underlying C library `raylib` with optimizations and the `-DNDEBUG` flag. This triggers a compatibility/spec violation on strict Intel/Mesa graphics drivers (unsized `GL_DEPTH_COMPONENT` passed to `glRenderbufferStorage`), leading to a `Framebuffer has incomplete attachment` error and rendering a black screen.
-- Keeping `debug-assertions = true` forces `sola-raylib-sys` to build the C `raylib` library in Debug configuration, which resolves the FBO driver bug.
+- In `Cargo.toml`, we use `[profile.release.build-override]` with `opt-level = 3` and `debug-assertions = false` to ensure raylib is built in optimized Release mode for 60 FPS performance.
+- On Linux Intel/Mesa drivers, raylib's default `LoadRenderTexture` encounters two driver/compiler issues under release optimizations:
+  1. Raylib's `rlLoadTexture(NULL, ...)` is miscompiled under GCC `-O3` to call `glCompressedTexImage2D` with format `GL_RGBA8`, which Mesa rejects with `GL_INVALID_ENUM`, leaving the color texture unallocated.
+  2. `rlLoadTextureDepth` passes unsized `GL_DEPTH_COMPONENT` to `glRenderbufferStorage`, failing depth buffer allocation.
+- This causes `glCheckFramebufferStatus` to return `GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT`, rendering a black screen except for procedural shaders.
+- **Resolution**: In `src/window.rs`, `Window::init` checks if `target.id` has an incomplete FBO (`!rlFramebufferComplete(target.id)`). If so, it cleanly detaches/unloads the unneeded depth renderbuffer (Rustahn is a 2D game) and re-allocates a valid color texture with initialized pixel memory via `rlLoadTexture`. This achieves full release-mode performance (60 FPS) without any black-screen issues on Linux/Mesa or Windows.
 
 ## Rendering and Aspect Ratio Conventions
 

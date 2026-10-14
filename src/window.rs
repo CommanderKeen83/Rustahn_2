@@ -27,9 +27,71 @@ impl Window {
 
         rl.set_target_fps(60);
 
-        let target = rl
+        let mut target = rl
             .load_render_texture(&thread, GAME_WIDTH as u32, GAME_HEIGHT as u32)
             .expect("could not create target in main.rs");
+
+        unsafe {
+            if !sola_raylib::ffi::rlFramebufferComplete(target.id) {
+                // In release mode on Linux/Mesa Intel drivers, raylib's default LoadRenderTexture
+                // attaches an invalid depth renderbuffer and miscompiles the rlLoadTexture(NULL, ...) call
+                // into glCompressedTexImage2D (due to a GCC -O3 compiler optimization bug), leaving the FBO incomplete.
+                //
+                // Fix:
+                // 1. Detach and unload the depth buffer (Rustahn is 2D and does not use depth testing).
+                // 2. Allocate valid color texture storage with initialized pixel data.
+                // 3. Re-attach the color texture to GL_COLOR_ATTACHMENT0.
+                let old_depth_id = target.depth.id;
+                sola_raylib::ffi::rlFramebufferAttach(
+                    target.id,
+                    0,
+                    sola_raylib::ffi::rlFramebufferAttachType::RL_ATTACHMENT_DEPTH as i32,
+                    sola_raylib::ffi::rlFramebufferAttachTextureType::RL_ATTACHMENT_RENDERBUFFER as i32,
+                    0,
+                );
+                target.depth.id = 0;
+
+                if old_depth_id > 0 {
+                    let dummy_fbo = sola_raylib::ffi::rlLoadFramebuffer();
+                    if dummy_fbo > 0 {
+                        sola_raylib::ffi::rlFramebufferAttach(
+                            dummy_fbo,
+                            old_depth_id,
+                            sola_raylib::ffi::rlFramebufferAttachType::RL_ATTACHMENT_DEPTH as i32,
+                            sola_raylib::ffi::rlFramebufferAttachTextureType::RL_ATTACHMENT_RENDERBUFFER as i32,
+                            0,
+                        );
+                        sola_raylib::ffi::rlUnloadFramebuffer(dummy_fbo);
+                    }
+                }
+
+                let empty_pixels = vec![0u8; (GAME_WIDTH * GAME_HEIGHT * 4) as usize];
+                let color_tex_id = sola_raylib::ffi::rlLoadTexture(
+                    empty_pixels.as_ptr() as *const _,
+                    GAME_WIDTH,
+                    GAME_HEIGHT,
+                    sola_raylib::ffi::rlPixelFormat::RL_PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 as i32,
+                    1,
+                );
+
+                if target.texture.id > 0 {
+                    sola_raylib::ffi::rlUnloadTexture(target.texture.id);
+                }
+                target.texture.id = color_tex_id;
+
+                sola_raylib::ffi::rlFramebufferAttach(
+                    target.id,
+                    target.texture.id,
+                    sola_raylib::ffi::rlFramebufferAttachType::RL_ATTACHMENT_COLOR_CHANNEL0 as i32,
+                    sola_raylib::ffi::rlFramebufferAttachTextureType::RL_ATTACHMENT_TEXTURE2D as i32,
+                    0,
+                );
+
+                if !sola_raylib::ffi::rlFramebufferComplete(target.id) {
+                    eprintln!("WARNING: Target FBO is still incomplete after recovery!");
+                }
+            }
+        }
 
         #[cfg(not(target_os = "macos"))]
         let (screen_w, screen_h) = {

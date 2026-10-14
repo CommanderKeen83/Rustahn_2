@@ -9,28 +9,10 @@ sola-raylib = "6.0"
 [profile.release]
 opt-level = 3
 
-# NOTE: sola-raylib-sys's build.rs picks its CMake build type (Debug vs. Release)
-# based on `cfg(debug_assertions)` *of the build script itself*, not of this profile.
-# Cargo always compiles build scripts with the dev profile's settings unless a
-# `[profile.release.build-override]` table says otherwise, so the vendored raylib
-# C library is built unoptimized (CMAKE_BUILD_TYPE=Debug) for both `cargo build`
-# and `cargo build --release` regardless of anything set here. That is what was
-# previously (mistakenly) worked around by setting `debug-assertions = true` above:
-# it had no effect on the C build and only added overflow-check overhead to our
-# own Rust code. It has been removed.
-#
-# This Debug-mode raylib build is also the main reason the game feels slow even
-# with very few entities on screen: every draw call, texture upload, and render-
-# texture operation runs through unoptimized C/C++.
-#
-# Forces an optimized (Release) raylib build. Confirmed on Windows 11 with Intel
-# HD Graphics 515 (weak integrated GPU): rock-solid 60 FPS, vs. unoptimized Debug-mode
-# raylib which was the actual cause of poor performance regardless of on-screen entity
-# count. NOT yet verified on Linux with the Mesa driver, which is what the original
-# black-screen bug (unsized GL_DEPTH_COMPONENT passed to glRenderbufferStorage under
-# Release-mode driver optimizations) affected. If targeting Linux/Mesa, re-test there
-# first; revert this table (comment it out) to fall back to the safe Debug-mode build
-# if it black-screens.
+# Forces an optimized (Release) raylib build for 60 FPS performance.
+# Note: On Linux/Mesa drivers, raylib's LoadRenderTexture under release optimizations
+# fails to properly allocate texture storage (GCC -O3 miscompilation of rlLoadTexture(NULL))
+# and depth attachments. This is detected and automatically recovered in Window::init.
 [profile.release.build-override]
 opt-level = 3
 debug-assertions = false
