@@ -106,7 +106,6 @@ impl Window {
     pub fn render_to_target(&mut self, mut draw_fn: impl FnMut(&mut RaylibTextureMode<RaylibHandle>)) {
         let mut d_texture = self.rl.begin_texture_mode(&self.thread, &mut self.target);
         d_texture.clear_background(Color::LIGHTBLUE);
-        d_texture.draw_text("hello, world", 12, 12, 20, Color::BLACK);
         draw_fn(&mut d_texture);
     }
 
