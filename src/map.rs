@@ -406,6 +406,531 @@ impl MapObject {
     }
 }
 
+// ============================================================================
+// Base64 & DEFLATE / Zlib Decompression for Tiled Tile Layers
+// ============================================================================
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buf: u32 = 0;
+    let mut bits: u8 = 0;
+
+    for b in input.bytes() {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            b' ' | b'\t' | b'\r' | b'\n' => continue,
+            other => {
+                return Err(format!(
+                    "Invalid base64 character '{}'",
+                    other as char
+                ))
+            }
+        };
+        buf = (buf << 6) | (val as u32);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((buf >> bits) & 0xFF) as u8);
+        }
+    }
+
+    Ok(out)
+}
+
+struct BitReader<'a> {
+    data: &'a [u8],
+    byte_pos: usize,
+    bit_pos: u8,
+}
+
+impl<'a> BitReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            byte_pos: 0,
+            bit_pos: 0,
+        }
+    }
+
+    fn read_bits(&mut self, count: u8) -> Result<u32, String> {
+        let mut result: u32 = 0;
+        for i in 0..count {
+            if self.byte_pos >= self.data.len() {
+                return Err("Unexpected end of compressed DEFLATE stream".to_string());
+            }
+            let bit = (self.data[self.byte_pos] >> self.bit_pos) & 1;
+            result |= (bit as u32) << i;
+            self.bit_pos += 1;
+            if self.bit_pos == 8 {
+                self.bit_pos = 0;
+                self.byte_pos += 1;
+            }
+        }
+        Ok(result)
+    }
+
+    fn align_to_byte(&mut self) {
+        if self.bit_pos > 0 {
+            self.bit_pos = 0;
+            self.byte_pos += 1;
+        }
+    }
+
+    fn read_u16_le(&mut self) -> Result<u16, String> {
+        self.align_to_byte();
+        if self.byte_pos + 2 > self.data.len() {
+            return Err("Unexpected end of stream reading u16".to_string());
+        }
+        let val = u16::from_le_bytes([self.data[self.byte_pos], self.data[self.byte_pos + 1]]);
+        self.byte_pos += 2;
+        Ok(val)
+    }
+}
+
+struct HuffmanTable {
+    counts: [u16; 16],
+    symbols: Vec<u16>,
+}
+
+impl HuffmanTable {
+    fn from_code_lengths(lengths: &[u8]) -> Result<Self, String> {
+        let mut counts = [0u16; 16];
+        for &len in lengths {
+            if len as usize >= 16 {
+                return Err(format!("Huffman code length {} exceeds maximum 15", len));
+            }
+            if len > 0 {
+                counts[len as usize] += 1;
+            }
+        }
+
+        let mut offsets = [0u16; 16];
+        let mut total = 0u16;
+        for bits in 1..16 {
+            offsets[bits] = total;
+            total += counts[bits];
+        }
+
+        let mut symbols = vec![0u16; total as usize];
+        for (sym, &len) in lengths.iter().enumerate() {
+            if len > 0 {
+                let idx = offsets[len as usize] as usize;
+                offsets[len as usize] += 1;
+                symbols[idx] = sym as u16;
+            }
+        }
+
+        Ok(Self { counts, symbols })
+    }
+
+    fn decode(&self, reader: &mut BitReader<'_>) -> Result<u16, String> {
+        let mut code: i32 = 0;
+        let mut first: i32 = 0;
+        let mut index: i32 = 0;
+
+        for len in 1..16 {
+            let bit = reader.read_bits(1)? as i32;
+            code |= bit;
+            let count = self.counts[len] as i32;
+            if code - count < first {
+                return Ok(self.symbols[(index + (code - first)) as usize]);
+            }
+            index += count;
+            first += count;
+            first <<= 1;
+            code <<= 1;
+        }
+
+        Err("Invalid Huffman code in DEFLATE stream".to_string())
+    }
+}
+
+fn inflate_raw(data: &[u8]) -> Result<Vec<u8>, String> {
+    const LENGTH_BASE: [u16; 29] = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+    ];
+    const LENGTH_EXTRA: [u8; 29] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    ];
+    const DIST_BASE: [u16; 30] = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+    ];
+    const DIST_EXTRA: [u8; 30] = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+    ];
+    const CL_ORDER: [usize; 19] = [
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+    ];
+
+    let mut reader = BitReader::new(data);
+    let mut out = Vec::new();
+
+    loop {
+        let bfinal = reader.read_bits(1)?;
+        let btype = reader.read_bits(2)?;
+
+        match btype {
+            0 => {
+                let len = reader.read_u16_le()?;
+                let nlen = reader.read_u16_le()?;
+                if len != !nlen {
+                    return Err("Stored DEFLATE block length check failed".to_string());
+                }
+                let count = len as usize;
+                if reader.byte_pos + count > reader.data.len() {
+                    return Err("Unexpected end of stream in stored DEFLATE block".to_string());
+                }
+                out.extend_from_slice(&reader.data[reader.byte_pos..reader.byte_pos + count]);
+                reader.byte_pos += count;
+            }
+            1 | 2 => {
+                let (lit_len_table, dist_table) = if btype == 1 {
+                    let mut lit_lengths = [0u8; 288];
+                    lit_lengths[0..=143].fill(8);
+                    lit_lengths[144..=255].fill(9);
+                    lit_lengths[256..=279].fill(7);
+                    lit_lengths[280..=287].fill(8);
+                    let dist_lengths = [5u8; 32];
+                    (
+                        HuffmanTable::from_code_lengths(&lit_lengths)?,
+                        HuffmanTable::from_code_lengths(&dist_lengths)?,
+                    )
+                } else {
+                    let hlit = reader.read_bits(5)? as usize + 257;
+                    let hdist = reader.read_bits(5)? as usize + 1;
+                    let hclen = reader.read_bits(4)? as usize + 4;
+
+                    let mut cl_lengths = [0u8; 19];
+                    for i in 0..hclen {
+                        cl_lengths[CL_ORDER[i]] = reader.read_bits(3)? as u8;
+                    }
+                    let cl_table = HuffmanTable::from_code_lengths(&cl_lengths)?;
+
+                    let mut lengths = Vec::with_capacity(hlit + hdist);
+                    while lengths.len() < hlit + hdist {
+                        let sym = cl_table.decode(&mut reader)?;
+                        match sym {
+                            0..=15 => lengths.push(sym as u8),
+                            16 => {
+                                let prev = *lengths
+                                    .last()
+                                    .ok_or("Repeat code 16 with no previous length")?;
+                                let repeat = reader.read_bits(2)? as usize + 3;
+                                for _ in 0..repeat {
+                                    lengths.push(prev);
+                                }
+                            }
+                            17 => {
+                                let repeat = reader.read_bits(3)? as usize + 3;
+                                for _ in 0..repeat {
+                                    lengths.push(0);
+                                }
+                            }
+                            18 => {
+                                let repeat = reader.read_bits(7)? as usize + 11;
+                                for _ in 0..repeat {
+                                    lengths.push(0);
+                                }
+                            }
+                            _ => return Err(format!("Invalid code length symbol {}", sym)),
+                        }
+                    }
+
+                    if lengths.len() != hlit + hdist {
+                        return Err("Code length run exceeded expected count".to_string());
+                    }
+
+                    (
+                        HuffmanTable::from_code_lengths(&lengths[..hlit])?,
+                        HuffmanTable::from_code_lengths(&lengths[hlit..])?,
+                    )
+                };
+
+                loop {
+                    let sym = lit_len_table.decode(&mut reader)?;
+                    if sym < 256 {
+                        out.push(sym as u8);
+                    } else if sym == 256 {
+                        break;
+                    } else {
+                        let len_idx = (sym - 257) as usize;
+                        if len_idx >= LENGTH_BASE.len() {
+                            return Err(format!("Invalid length symbol {}", sym));
+                        }
+                        let length = LENGTH_BASE[len_idx] as usize
+                            + reader.read_bits(LENGTH_EXTRA[len_idx])? as usize;
+
+                        let dist_sym = dist_table.decode(&mut reader)? as usize;
+                        if dist_sym >= DIST_BASE.len() {
+                            return Err(format!("Invalid distance symbol {}", dist_sym));
+                        }
+                        let distance = DIST_BASE[dist_sym] as usize
+                            + reader.read_bits(DIST_EXTRA[dist_sym])? as usize;
+
+                        if distance == 0 || distance > out.len() {
+                            return Err(format!(
+                                "Invalid back-reference distance {} (output len {})",
+                                distance,
+                                out.len()
+                            ));
+                        }
+
+                        for _ in 0..length {
+                            let b = out[out.len() - distance];
+                            out.push(b);
+                        }
+                    }
+                }
+            }
+            _ => return Err(format!("Invalid DEFLATE block type {}", btype)),
+        }
+
+        if bfinal != 0 {
+            break;
+        }
+    }
+
+    Ok(out)
+}
+
+fn decompress_zlib(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 6 {
+        return Err("Zlib stream too short".to_string());
+    }
+    let cmf = data[0];
+    let flg = data[1];
+    if (cmf & 0x0F) != 8 {
+        return Err(format!("Unsupported zlib compression method {}", cmf & 0x0F));
+    }
+    if ((cmf as u16) * 256 + (flg as u16)) % 31 != 0 {
+        return Err("Invalid zlib header checksum".to_string());
+    }
+    let start = if (flg & 0x20) != 0 { 6 } else { 2 };
+    if start + 4 > data.len() {
+        return Err("Zlib stream truncated".to_string());
+    }
+    inflate_raw(&data[start..data.len() - 4])
+}
+
+fn decompress_gzip(data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 18 || data[0] != 0x1F || data[1] != 0x8B {
+        return Err("Invalid gzip header".to_string());
+    }
+    if data[2] != 8 {
+        return Err("Unsupported gzip compression method".to_string());
+    }
+    let flags = data[3];
+    let mut pos = 10;
+    if (flags & 0x04) != 0 {
+        if pos + 2 > data.len() {
+            return Err("Truncated gzip FEXTRA".to_string());
+        }
+        let xlen = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
+        pos += 2 + xlen;
+    }
+    if (flags & 0x08) != 0 {
+        while pos < data.len() && data[pos] != 0 {
+            pos += 1;
+        }
+        pos += 1;
+    }
+    if (flags & 0x10) != 0 {
+        while pos < data.len() && data[pos] != 0 {
+            pos += 1;
+        }
+        pos += 1;
+    }
+    if (flags & 0x02) != 0 {
+        pos += 2;
+    }
+    if pos + 8 > data.len() {
+        return Err("Truncated gzip stream".to_string());
+    }
+    inflate_raw(&data[pos..data.len() - 8])
+}
+
+fn decode_tile_layer_data(layer_val: &JsonValue) -> Result<Vec<u32>, MapError> {
+    let Some(data_val) = layer_val.get("data") else {
+        return Ok(Vec::new());
+    };
+
+    // Case 1: Uncompressed JSON array of integer GIDs
+    if let Some(arr) = data_val.as_array() {
+        let mut gids = Vec::with_capacity(arr.len());
+        for v in arr {
+            let gid = v.as_u32().unwrap_or(0);
+            gids.push(gid);
+        }
+        return Ok(gids);
+    }
+
+    // Case 2: Base64-encoded (optionally compressed) binary GID array
+    if let Some(b64_str) = data_val.as_str() {
+        let encoding = layer_val
+            .get("encoding")
+            .and_then(|v| v.as_str())
+            .unwrap_or("base64");
+        if encoding != "base64" {
+            return Err(MapError::InvalidFormat(format!(
+                "Unsupported tile layer encoding '{}'",
+                encoding
+            )));
+        }
+
+        let raw_bytes = decode_base64(b64_str).map_err(MapError::InvalidFormat)?;
+        let compression = layer_val
+            .get("compression")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        let decompressed = match compression {
+            "" => raw_bytes,
+            "zlib" => decompress_zlib(&raw_bytes).map_err(MapError::InvalidFormat)?,
+            "gzip" => decompress_gzip(&raw_bytes).map_err(MapError::InvalidFormat)?,
+            other => {
+                return Err(MapError::InvalidFormat(format!(
+                    "Unsupported tile layer compression '{}'",
+                    other
+                )))
+            }
+        };
+
+        if decompressed.len() % 4 != 0 {
+            return Err(MapError::InvalidFormat(format!(
+                "Decompressed tile data byte length ({}) is not a multiple of 4",
+                decompressed.len()
+            )));
+        }
+
+        let mut gids = Vec::with_capacity(decompressed.len() / 4);
+        for chunk in decompressed.chunks_exact(4) {
+            gids.push(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        }
+        return Ok(gids);
+    }
+
+    Ok(Vec::new())
+}
+
+fn normalize_tileset_image_path(raw_image: &str, map_dir: Option<&Path>) -> String {
+    let cleaned = raw_image.replace('\\', "/");
+    if let Some(dir) = map_dir {
+        let joined = dir.join(&cleaned);
+        let mut components = Vec::new();
+        for comp in joined.components() {
+            match comp {
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    components.pop();
+                }
+                other => components.push(other),
+            }
+        }
+        let normalized: PathBuf = components.into_iter().collect();
+        return normalized.to_string_lossy().replace('\\', "/");
+    }
+
+    // Fallback when parsed directly from a JSON string without a known file path:
+    // resolve "../../graphics/..." to "resources/graphics/..."
+    let mut trimmed = cleaned.as_str();
+    while let Some(rest) = trimmed.strip_prefix("../") {
+        trimmed = rest;
+    }
+    if trimmed != cleaned {
+        let candidate = format!("resources/{}", trimmed);
+        if Path::new(&candidate).exists() || trimmed.starts_with("graphics/") {
+            return candidate;
+        }
+    }
+
+    cleaned
+}
+
+/// Tileset metadata referencing a sprite sheet image for tile layers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MapTileset {
+    pub first_gid: u32,
+    pub name: String,
+    pub tile_width: u32,
+    pub tile_height: u32,
+    pub spacing: u32,
+    pub margin: u32,
+    pub tile_count: u32,
+    pub columns: u32,
+    pub image: String,
+    pub image_width: u32,
+    pub image_height: u32,
+}
+
+impl MapTileset {
+    pub const FLIPPED_HORIZONTALLY_FLAG: u32 = 0x8000_0000;
+    pub const FLIPPED_VERTICALLY_FLAG: u32 = 0x4000_0000;
+    pub const FLIPPED_DIAGONALLY_FLAG: u32 = 0x2000_0000;
+    pub const GID_MASK: u32 =
+        !(Self::FLIPPED_HORIZONTALLY_FLAG | Self::FLIPPED_VERTICALLY_FLAG | Self::FLIPPED_DIAGONALLY_FLAG);
+
+    /// Strips Tiled flip flags from a raw GID.
+    pub fn strip_flags(gid: u32) -> u32 {
+        gid & Self::GID_MASK
+    }
+
+    /// Returns true if the given GID belongs to this tileset.
+    pub fn contains_gid(&self, gid: u32) -> bool {
+        let raw_gid = Self::strip_flags(gid);
+        if raw_gid < self.first_gid {
+            return false;
+        }
+        let local_id = raw_gid - self.first_gid;
+        self.tile_count == 0 || local_id < self.tile_count
+    }
+
+    /// Computes the source rectangle on the tileset sprite sheet for the given `gid`.
+    /// Preserves horizontal and vertical flip flags as negative width/height for Raylib `draw_texture_pro`.
+    pub fn tile_source_rect(&self, gid: u32) -> Option<Rectangle> {
+        if !self.contains_gid(gid) {
+            return None;
+        }
+        let raw_gid = Self::strip_flags(gid);
+        let local_id = raw_gid - self.first_gid;
+
+        let cols = if self.columns > 0 {
+            self.columns
+        } else if self.tile_width > 0 && self.image_width >= self.tile_width {
+            (self.image_width.saturating_sub(2 * self.margin) + self.spacing)
+                / (self.tile_width + self.spacing)
+        } else {
+            1
+        };
+        if cols == 0 {
+            return None;
+        }
+
+        let col = local_id % cols;
+        let row = local_id / cols;
+        let x = (self.margin + col * (self.tile_width + self.spacing)) as f32;
+        let y = (self.margin + row * (self.tile_height + self.spacing)) as f32;
+
+        let mut w = self.tile_width as f32;
+        let mut h = self.tile_height as f32;
+        if (gid & Self::FLIPPED_HORIZONTALLY_FLAG) != 0 {
+            w = -w;
+        }
+        if (gid & Self::FLIPPED_VERTICALLY_FLAG) != 0 {
+            h = -h;
+        }
+
+        Some(Rectangle::new(x, y, w, h))
+    }
+}
+
 /// Type of layer in a Tiled map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayerType {
@@ -432,7 +957,43 @@ pub struct MapLayer {
     pub layer_type: LayerType,
     pub visible: bool,
     pub opacity: f32,
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u32>,
     pub objects: Vec<MapObject>,
+}
+
+impl MapLayer {
+    pub fn is_tile_layer(&self) -> bool {
+        self.layer_type == LayerType::TileLayer
+    }
+
+    pub fn is_object_group(&self) -> bool {
+        self.layer_type == LayerType::ObjectGroup
+    }
+
+    /// Returns the tile GID at `(col, row)`, or `0` if empty or out of bounds.
+    pub fn tile_gid_at(&self, col: u32, row: u32) -> u32 {
+        if col >= self.width || row >= self.height {
+            return 0;
+        }
+        let idx = (row * self.width + col) as usize;
+        self.data.get(idx).copied().unwrap_or(0)
+    }
+
+    /// Iterator over all non-empty tiles `(col, row, gid)` in this tile layer.
+    pub fn non_empty_tiles(&self) -> impl Iterator<Item = (u32, u32, u32)> + '_ {
+        let w = self.width;
+        self.data.iter().enumerate().filter_map(move |(idx, &gid)| {
+            if gid != 0 && w > 0 {
+                let col = (idx as u32) % w;
+                let row = (idx as u32) / w;
+                Some((col, row, gid))
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Level map loaded from a Tiled JSON map export.
@@ -443,6 +1004,7 @@ pub struct Map {
     pub tile_width: u32,
     pub tile_height: u32,
     pub layers: Vec<MapLayer>,
+    pub tilesets: Vec<MapTileset>,
 }
 
 /// Collection of ECS entities and markers generated when spawning a `Map` into a `World`.
@@ -468,6 +1030,34 @@ impl Map {
     /// Map pixel bounds rectangle from (0, 0) to (pixel_width, pixel_height).
     pub fn bounds(&self) -> Rectangle {
         Rectangle::new(0.0, 0.0, self.pixel_width(), self.pixel_height())
+    }
+
+    /// Iterator over all tile layers in the map.
+    pub fn tile_layers(&self) -> impl Iterator<Item = &MapLayer> {
+        self.layers.iter().filter(|l| l.is_tile_layer())
+    }
+
+    /// Slice of all tilesets defined in the map.
+    pub fn tilesets(&self) -> &[MapTileset] {
+        &self.tilesets
+    }
+
+    /// Finds the tileset that owns the given `gid`.
+    pub fn find_tileset_for_gid(&self, gid: u32) -> Option<&MapTileset> {
+        let raw_gid = MapTileset::strip_flags(gid);
+        if raw_gid == 0 {
+            return None;
+        }
+        self.tilesets
+            .iter()
+            .filter(|ts| ts.contains_gid(gid))
+            .max_by_key(|ts| ts.first_gid)
+    }
+
+    /// Computes the source rectangle in the corresponding tileset for `gid`.
+    pub fn tile_source_rect(&self, gid: u32) -> Option<Rectangle> {
+        self.find_tileset_for_gid(gid)
+            .and_then(|ts| ts.tile_source_rect(gid))
     }
 
     /// Iterator over all objects across all layers.
@@ -505,7 +1095,7 @@ impl Map {
         let content = fs::read_to_string(&resolved).map_err(|e| {
             MapError::IoError(format!("Failed to read '{}': {}", resolved.display(), e))
         })?;
-        Self::from_json_str(&content)
+        Self::from_json_str_with_dir(&content, resolved.parent())
     }
 
     /// Resolves file paths with or without `.json` extension.
@@ -538,6 +1128,10 @@ impl Map {
 
     /// Parses a Tiled JSON map string.
     pub fn from_json_str(json_str: &str) -> Result<Self, MapError> {
+        Self::from_json_str_with_dir(json_str, None)
+    }
+
+    fn from_json_str_with_dir(json_str: &str, map_dir: Option<&Path>) -> Result<Self, MapError> {
         let mut parser = JsonParser::new(json_str);
         let root = parser.parse_value().map_err(MapError::ParseError)?;
 
@@ -577,6 +1171,14 @@ impl Map {
                 let layer_type = LayerType::from_str_type(type_str);
                 let visible = l_val.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
                 let opacity = l_val.get("opacity").and_then(|v| v.as_f32()).unwrap_or(1.0);
+                let layer_width = l_val.get("width").and_then(|v| v.as_u32()).unwrap_or(width);
+                let layer_height = l_val.get("height").and_then(|v| v.as_u32()).unwrap_or(height);
+
+                let data = if layer_type == LayerType::TileLayer {
+                    decode_tile_layer_data(l_val)?
+                } else {
+                    Vec::new()
+                };
 
                 let mut objects = Vec::new();
                 if let Some(obj_array) = l_val.get("objects").and_then(|v| v.as_array()) {
@@ -624,7 +1226,52 @@ impl Map {
                     layer_type,
                     visible,
                     opacity,
+                    width: layer_width,
+                    height: layer_height,
+                    data,
                     objects,
+                });
+            }
+        }
+
+        let mut tilesets = Vec::new();
+        if let Some(ts_array) = root.get("tilesets").and_then(|v| v.as_array()) {
+            for ts_val in ts_array {
+                let first_gid = ts_val.get("firstgid").and_then(|v| v.as_u32()).unwrap_or(1);
+                let name = ts_val
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let ts_tile_width = ts_val
+                    .get("tilewidth")
+                    .and_then(|v| v.as_u32())
+                    .unwrap_or(tile_width);
+                let ts_tile_height = ts_val
+                    .get("tileheight")
+                    .and_then(|v| v.as_u32())
+                    .unwrap_or(tile_height);
+                let spacing = ts_val.get("spacing").and_then(|v| v.as_u32()).unwrap_or(0);
+                let margin = ts_val.get("margin").and_then(|v| v.as_u32()).unwrap_or(0);
+                let tile_count = ts_val.get("tilecount").and_then(|v| v.as_u32()).unwrap_or(0);
+                let columns = ts_val.get("columns").and_then(|v| v.as_u32()).unwrap_or(0);
+                let raw_image = ts_val.get("image").and_then(|v| v.as_str()).unwrap_or("");
+                let image = normalize_tileset_image_path(raw_image, map_dir);
+                let image_width = ts_val.get("imagewidth").and_then(|v| v.as_u32()).unwrap_or(0);
+                let image_height = ts_val.get("imageheight").and_then(|v| v.as_u32()).unwrap_or(0);
+
+                tilesets.push(MapTileset {
+                    first_gid,
+                    name,
+                    tile_width: ts_tile_width,
+                    tile_height: ts_tile_height,
+                    spacing,
+                    margin,
+                    tile_count,
+                    columns,
+                    image,
+                    image_width,
+                    image_height,
                 });
             }
         }
@@ -635,6 +1282,7 @@ impl Map {
             tile_width,
             tile_height,
             layers,
+            tilesets,
         })
     }
 
@@ -972,5 +1620,77 @@ mod tests {
             visible: true,
         };
         assert_eq!(obj_0.center(), Vector2::new(110.0, 105.0));
+    }
+
+    #[test]
+    fn test_act_two_map_tiles_layer_and_tileset() {
+        let map = Map::load_from_file("resources/maps/act_two/map1.json")
+            .expect("Should load act_two/map1.json");
+
+        // Verify tileset metadata
+        assert_eq!(map.tilesets().len(), 1);
+        let ts = &map.tilesets()[0];
+        assert_eq!(ts.name, "Platforms");
+        assert_eq!(ts.first_gid, 1);
+        assert_eq!(ts.columns, 16);
+        assert_eq!(ts.tile_width, 32);
+        assert_eq!(ts.tile_height, 32);
+        assert_eq!(ts.tile_count, 256);
+        assert_eq!(ts.image_width, 512);
+        assert_eq!(ts.image_height, 512);
+        assert_eq!(ts.image, "resources/graphics/Platforms.png");
+        assert!(
+            std::path::Path::new(&ts.image).exists(),
+            "Tileset image file '{}' must exist on disk",
+            ts.image
+        );
+
+        // Verify tile layer decompression
+        let tile_layers: Vec<&MapLayer> = map.tile_layers().collect();
+        assert_eq!(tile_layers.len(), 1);
+        let tiles_layer = tile_layers[0];
+        assert_eq!(tiles_layer.name, "Tiles");
+        assert_eq!(tiles_layer.width, 140);
+        assert_eq!(tiles_layer.height, 35);
+        assert_eq!(tiles_layer.data.len(), 140 * 35);
+
+        let non_empty: Vec<(u32, u32, u32)> = tiles_layer.non_empty_tiles().collect();
+        assert_eq!(
+            non_empty,
+            vec![
+                (2, 32, 1),
+                (3, 32, 2),
+                (4, 32, 3),
+                (5, 32, 4),
+                (6, 32, 5),
+                (2, 33, 18),
+                (3, 33, 19),
+                (4, 33, 20),
+                (5, 33, 21),
+                (2, 34, 129),
+                (3, 34, 130),
+                (4, 34, 131),
+                (5, 34, 132),
+            ]
+        );
+
+        // Verify source rectangle calculations
+        assert_eq!(
+            map.tile_source_rect(1),
+            Some(Rectangle::new(0.0, 0.0, 32.0, 32.0))
+        );
+        assert_eq!(
+            map.tile_source_rect(5),
+            Some(Rectangle::new(128.0, 0.0, 32.0, 32.0))
+        );
+        assert_eq!(
+            map.tile_source_rect(18),
+            Some(Rectangle::new(32.0, 32.0, 32.0, 32.0))
+        );
+        assert_eq!(
+            map.tile_source_rect(129),
+            Some(Rectangle::new(0.0, 256.0, 32.0, 32.0))
+        );
+        assert_eq!(map.tile_source_rect(0), None);
     }
 }

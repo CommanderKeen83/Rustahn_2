@@ -59,12 +59,14 @@ pub trait Scene: 'static {
 /// Manager responsible for hosting and transitioning between game scenes.
 pub struct SceneManager {
     current_scene: Box<dyn Scene>,
+    has_entered: bool,
 }
 
 impl SceneManager {
     pub fn new(initial_scene: Box<dyn Scene>) -> Self {
         Self {
             current_scene: initial_scene,
+            has_entered: false,
         }
     }
 
@@ -80,13 +82,23 @@ impl SceneManager {
         self.current_scene.tag()
     }
 
+    pub fn has_entered(&self) -> bool {
+        self.has_entered
+    }
+
     pub fn switch_scene(&mut self, new_scene: Box<dyn Scene>) {
-        self.current_scene.on_exit();
+        if self.has_entered {
+            self.current_scene.on_exit();
+        }
         self.current_scene = new_scene;
+        self.has_entered = false;
     }
 
     pub fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
-        self.current_scene.on_enter(rl, thread, resources);
+        if !self.has_entered {
+            self.current_scene.on_enter(rl, thread, resources);
+            self.has_entered = true;
+        }
     }
 
     pub fn update(&mut self, ctx: &mut Context) {

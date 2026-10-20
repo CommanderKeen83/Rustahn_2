@@ -79,6 +79,7 @@ pub type Context<'a> = UpdateContext<'a>;
 
 pub trait Screen {
     fn on_enter(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
+    fn poll_lifecycles(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
     fn on_activate(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
     fn on_deactivate(&mut self) {}
     fn on_exit(&mut self) {}
@@ -120,6 +121,10 @@ macro_rules! delegate_screen {
 impl Screen for State {
     fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
         delegate_screen!(self, s => s.on_enter(rl, thread, resources));
+    }
+
+    fn poll_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        delegate_screen!(self, s => s.poll_lifecycles(rl, thread, resources));
     }
 
     fn on_activate(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
@@ -181,6 +186,8 @@ impl StackEntry {
         if !self.has_entered {
             self.state.on_enter(rl, thread, resources);
             self.has_entered = true;
+        } else {
+            self.state.poll_lifecycles(rl, thread, resources);
         }
     }
 

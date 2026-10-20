@@ -33,6 +33,10 @@ impl Screen for Game {
         self.scene_manager.on_enter(rl, thread, resources);
     }
 
+    fn poll_lifecycles(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        self.scene_manager.on_enter(rl, thread, resources);
+    }
+
     fn update(&mut self, ctx: &mut Context) -> Option<Transition> {
         if ctx.rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) || ctx.rl.is_key_pressed(KeyboardKey::KEY_P) {
             return Some(Transition::Push(State::from_tag(StateTag::Pause)));

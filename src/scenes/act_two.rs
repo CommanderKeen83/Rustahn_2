@@ -79,6 +79,7 @@ pub struct ActTwoScene {
     thrust_delay_timer: f32,
     jump_held: bool,
     spawn_pos: Vector2,
+    map: Option<Map>,
     map_entities: Option<MapSpawnResult>,
     pub hook: GrapplingHook,
     last_input: ActTwoInput,
@@ -212,6 +213,7 @@ impl ActTwoScene {
             thrust_delay_timer: 0.0,
             jump_held: false,
             spawn_pos: Vector2::new(Self::PLAYER_SPAWN_X, Self::PLAYER_SPAWN_Y),
+            map: None,
             map_entities: None,
             hook: GrapplingHook::new(),
             last_input: ActTwoInput::default(),
@@ -263,6 +265,7 @@ impl ActTwoScene {
             thrust_delay_timer: 0.0,
             jump_held: false,
             spawn_pos,
+            map: Some(map.clone()),
             map_entities: Some(map_entities),
             hook: GrapplingHook::new(),
             last_input: ActTwoInput::default(),
@@ -275,6 +278,20 @@ impl ActTwoScene {
     pub fn from_map_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, MapError> {
         let map = Map::load_from_file(path)?;
         Ok(Self::from_map(&map))
+    }
+
+    /// Returns the loaded Tiled `Map`, if constructed from a map.
+    pub fn map(&self) -> Option<&Map> {
+        self.map.as_ref()
+    }
+
+    /// Returns the resolved sprite sheet path for the primary map tileset, if any.
+    pub fn tileset_image_path(&self) -> Option<&str> {
+        self.map
+            .as_ref()
+            .and_then(|m| m.tilesets().first())
+            .map(|ts| ts.image.as_str())
+            .filter(|s| !s.is_empty())
     }
 
     /// Returns the entities spawned from the loaded map, if any.
@@ -709,7 +726,15 @@ impl Default for ActTwoScene {
 }
 
 impl Scene for ActTwoScene {
-    fn on_enter(&mut self, _rl: &mut RaylibHandle, _thread: &RaylibThread, _resources: &mut ResourceManager) {}
+    fn on_enter(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread, resources: &mut ResourceManager) {
+        let tileset_path = self
+            .tileset_image_path()
+            .unwrap_or("resources/graphics/Platforms.png")
+            .to_string();
+        if let Err(e) = resources.load_texture(rl, thread, SpriteID::Platforms, &tileset_path) {
+            eprintln!("Failed to load Act Two tileset texture '{}': {}", tileset_path, e);
+        }
+    }
 
     fn on_exit(&mut self) {}
 
@@ -744,11 +769,12 @@ impl Scene for ActTwoScene {
         self.check_transition()
     }
 
-    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, _resources: &ResourceManager) {
+    fn draw(&mut self, canvas: &mut RaylibTextureMode<RaylibHandle>, resources: &ResourceManager) {
         canvas.clear_background(Color::BLACK);
 
+        // 1. Draw static obstacle / platform collider rectangles
         for i in 0..self.world.next_entity_id {
-            if !self.world.alive[i] {
+            if !self.world.alive[i] || !self.world.tags[i].is_solid_obstacle() {
                 continue;
             }
             let col = match self.world.colliders[i] {
@@ -758,10 +784,88 @@ impl Scene for ActTwoScene {
 
             let color = if Some(EntityID(i)) == self.floor_id
                 || Some(EntityID(i)) == self.platform_id
-                || (self.world.tags[i].is_solid_obstacle() && col.is_solid)
+                || col.is_solid
             {
                 Color::GREEN
-            } else if Some(EntityID(i)) == self.player_id || self.world.tags[i] == EntityType::Player {
+            } else {
+                Color::GOLD
+            };
+
+            let pos = self.world.positions[i];
+            let rotation = self.world.rotations[i];
+            let screen_w = col.width * VIRTUAL_SCALE;
+            let screen_h = col.height * VIRTUAL_SCALE;
+
+            let dest = Rectangle::new(
+                (pos.x + col.offset.x - self.camera.x()) * VIRTUAL_SCALE,
+                (pos.y + col.offset.y - self.camera.y()) * VIRTUAL_SCALE,
+                screen_w,
+                screen_h,
+            );
+            let origin = Vector2::new(dest.width * 0.5, dest.height * 0.5);
+            canvas.draw_rectangle_pro(dest, origin, rotation, color);
+        }
+
+        // 2. Draw Tiled tile layers from the loaded sprite sheet
+        if let (Some(map), Some(tex)) = (&self.map, resources.get_texture(&SpriteID::Platforms)) {
+            let tile_w = map.tile_width as f32;
+            let tile_h = map.tile_height as f32;
+            let cam_x = self.camera.x();
+            let cam_y = self.camera.y();
+            let cam_right = cam_x + self.camera.viewport_width;
+            let cam_bottom = cam_y + self.camera.viewport_height;
+
+            for layer in map.tile_layers() {
+                if !layer.visible {
+                    continue;
+                }
+                let alpha = (layer.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+                let tint = Color::new(255, 255, 255, alpha);
+
+                for (col, row, gid) in layer.non_empty_tiles() {
+                    let world_x = (col as f32) * tile_w;
+                    let world_y = (row as f32) * tile_h;
+
+                    // Cull tiles outside the active camera viewport
+                    if world_x + tile_w < cam_x
+                        || world_x > cam_right
+                        || world_y + tile_h < cam_y
+                        || world_y > cam_bottom
+                    {
+                        continue;
+                    }
+
+                    if let Some(source) = map.tile_source_rect(gid) {
+                        let dest = Rectangle::new(
+                            (world_x - cam_x) * VIRTUAL_SCALE,
+                            (world_y - cam_y) * VIRTUAL_SCALE,
+                            tile_w * VIRTUAL_SCALE,
+                            tile_h * VIRTUAL_SCALE,
+                        );
+                        canvas.draw_texture_pro(
+                            tex,
+                            source,
+                            dest,
+                            Vector2::new(0.0, 0.0),
+                            0.0,
+                            tint,
+                        );
+                    }
+                }
+            }
+        }
+
+        // 3. Draw dynamic entities (Player, Gobbler enemies, etc.) on top of tiles
+        for i in 0..self.world.next_entity_id {
+            if !self.world.alive[i] || self.world.tags[i].is_solid_obstacle() {
+                continue;
+            }
+            let col = match self.world.colliders[i] {
+                Some(c) => c,
+                None => continue,
+            };
+
+            let color = if Some(EntityID(i)) == self.player_id || self.world.tags[i] == EntityType::Player {
                 Color::PURPLE
             } else if self.world.tags[i] == EntityType::Gobbler || self.world.tags[i].is_enemy() {
                 Color::BLUE
@@ -2253,6 +2357,20 @@ mod tests {
 
         assert!(!scene.is_hook_attached(), "Hook should not attach when nothing is in range");
         assert!(matches!(scene.hook().state, HookState::Missed { .. }));
+    }
+
+    #[test]
+    fn test_act_two_loads_tiles_layer_and_tileset_path() {
+        let scene = ActTwoScene::new();
+        assert_eq!(
+            scene.tileset_image_path(),
+            Some("resources/graphics/Platforms.png")
+        );
+        let map = scene.map().expect("ActTwoScene::new() should retain loaded Map");
+        assert_eq!(map.tile_layers().count(), 1);
+        let tiles_layer = map.tile_layers().next().unwrap();
+        assert_eq!(tiles_layer.name, "Tiles");
+        assert!(tiles_layer.non_empty_tiles().count() > 0);
     }
 }
 

@@ -43,5 +43,6 @@ pub enum SpriteID {
     GameIntroWindowLamp,
     LevelOneBackground,
     ActOneForeground,
+    Platforms,
     None,
 }

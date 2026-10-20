@@ -5,6 +5,7 @@ pub use crate::components::*;
 pub use crate::ecs::{self, World};
 pub use crate::map::{
     JsonValue, LayerType, Map, MapError, MapLayer, MapObject, MapObjectType, MapSpawnResult,
+    MapTileset,
 };
 pub use crate::resources::ResourceManager;
 pub use crate::scenes::{

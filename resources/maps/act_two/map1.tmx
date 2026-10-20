@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="3" nextobjectid="50">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="140" height="35" tilewidth="32" tileheight="32" infinite="0" nextlayerid="4" nextobjectid="50">
  <editorsettings>
   <export target="map1.json" format="json"/>
  </editorsettings>
+ <tileset firstgid="1" name="Platforms" tilewidth="32" tileheight="32" tilecount="256" columns="16">
+  <image source="../../graphics/Platforms.png" width="512" height="512"/>
+ </tileset>
  <objectgroup id="2" name="Platforms">
   <object id="22" type="Platform" x="64" y="1024" width="160" height="32"/>
   <object id="23" type="Platform" x="160" y="976" width="112" height="16"/>
@@ -28,4 +31,9 @@
   <object id="48" type="Gobbler" x="928" y="768"/>
   <object id="49" type="Gobbler" x="1376" y="640"/>
  </objectgroup>
+ <layer id="3" name="Tiles" width="140" height="35">
+  <data encoding="base64" compression="zlib">
+   eJztzscRwEAMxLBzasChYIfCvV1ID2CGf44BAAAAAAAAAAAAAAAAAAAAAEClKc1pSWvaandobk9HOtNV/EJ/d3rSm77iF/r6AVhqAmg=
+  </data>
+ </layer>
 </map>
