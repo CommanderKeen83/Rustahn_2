@@ -8,32 +8,32 @@
  </tileset>
  <objectgroup id="2" name="Platforms">
   <object id="22" type="Platform" x="64" y="1024" width="160" height="32"/>
-  <object id="23" type="Platform" x="160" y="976" width="112" height="16"/>
-  <object id="24" type="Platform" x="352" y="896" width="224" height="16"/>
+  <object id="23" type="Platform" x="160" y="960" width="112" height="32"/>
+  <object id="24" type="Platform" x="352" y="896" width="224" height="32"/>
   <object id="25" type="Platform" x="512" y="992" width="160" height="32"/>
-  <object id="26" type="Platform" x="672" y="928" width="96" height="16"/>
-  <object id="27" type="Platform" x="752" y="832" width="96" height="16"/>
-  <object id="28" type="Platform" x="800" y="880" width="176" height="16"/>
-  <object id="29" type="Platform" x="976" y="784" width="208" height="32"/>
-  <object id="30" type="Platform" x="1264" y="736" width="192" height="32"/>
-  <object id="31" type="Platform" x="1392" y="848" width="112" height="272"/>
-  <object id="32" type="Platform" x="1536" y="1008" width="160" height="112"/>
-  <object id="33" type="Platform" x="1696" y="944" width="112" height="32"/>
-  <object id="34" type="Platform" x="1808" y="864" width="80" height="32"/>
-  <object id="35" type="Platform" x="1904" y="784" width="80" height="48"/>
-  <object id="36" type="Platform" x="1760" y="816" width="64" height="16"/>
-  <object id="37" type="Platform" x="2016" y="784" width="80" height="16"/>
-  <object id="38" type="Exit" x="2096" y="672" width="128" height="48"/>
-  <object id="42" type="Spawn" x="96" y="912"/>
+  <object id="26" type="Platform" x="672" y="928" width="96" height="32"/>
+  <object id="27" type="Platform" x="736" y="832" width="96" height="32"/>
+  <object id="28" type="Platform" x="800" y="896" width="176" height="32"/>
+  <object id="29" type="Platform" x="960" y="768" width="224" height="32"/>
+  <object id="30" type="Platform" x="1248" y="736" width="192" height="32"/>
+  <object id="31" type="Platform" x="1376" y="832" width="128" height="288"/>
+  <object id="32" type="Platform" x="1536" y="992" width="160" height="128"/>
+  <object id="33" type="Platform" x="1696" y="928" width="128" height="32"/>
+  <object id="34" type="Platform" x="1824" y="864" width="96" height="32"/>
+  <object id="35" type="Platform" x="1920" y="768" width="96" height="64"/>
+  <object id="36" type="Platform" x="1760" y="800" width="64" height="32"/>
+  <object id="37" type="Platform" x="2048" y="768" width="96" height="32"/>
+  <object id="38" type="Exit" x="2080" y="672" width="160" height="64"/>
+  <object id="42" type="Spawn" x="96" y="896" width="32" height="32"/>
   <object id="45" type="Platform" x="0" y="1088" width="1376" height="32"/>
   <object id="46" type="Platform" x="1696" y="1088" width="1024" height="32"/>
-  <object id="47" type="Gobbler" x="512" y="800"/>
-  <object id="48" type="Gobbler" x="928" y="768"/>
-  <object id="49" type="Gobbler" x="1376" y="640"/>
+  <object id="47" type="Gobbler" x="480" y="800" width="32" height="32"/>
+  <object id="48" type="Gobbler" x="896" y="736" width="32" height="32"/>
+  <object id="49" type="Gobbler" x="1344" y="640" width="32" height="32"/>
  </objectgroup>
  <layer id="3" name="Tiles" width="140" height="35">
   <data encoding="base64" compression="zlib">
-   eJztzscRwEAMxLBzasChYIfCvV1ID2CGf44BAAAAAAAAAAAAAAAAAAAAAEClKc1pSWvaandobk9HOtNV/EJ/d3rSm77iF/r6AVhqAmg=
+   eJztmOlx1EAUhMeA8X+OBAAnwJEARwKwTgBWgYCdAFcAHA6AKwCuALgCAJMAmADoKe2Un1o90h7wA9NfVZe8u5JGntfqN1JKxhhjjDHGGGOMMcYYY4wxxhhjjDHGGGOMMWYVtv5xTcJ2Ej6P/cbnqKnsY1p4Xv9E/VSdxmq2ql+KplAz0yR8NxXXwPuV3xo6b7P07B4+8lxMacv+WaTG09Svk6rXJHVrGxWvQ+WF8kvt+OiheC1xv9q8RJkWnttVcyb6Rd37Ne+oDIq1jfVVflE+YL/UxlHwmKaF5zbWQ937Yzmk/NKkfp05e9hLeZ816Ah0FDoGrUPHU90vQ/lSy7Ka+PpNC9+TUbW+FOugeozqA3zu4gX2w0bY/wR0EjoFnU7j6yUej/tQQ+M1NLbyjP3SRfWhoXnnvsC5EGsz1nOy2BOx/megs9A5aDPV/VK7vtvQHbqmOJ7KFV772i9dhnJ8mW30UryXa35hT8Q6nYcuQBehS6mfRWN+4d431Ftrx9ovXW4KzZsvY9tyLw+tadkTMe8uQ1egq9A16C50D7oPPUh6naueu0rObIex43FD6zX7pYvySy0/4rzvzLZZa0m/AynZUXIh5kPZhz0Ra3gduhHGfwQ9hp5AT2ms6AF+bo79Tv0es6b2rG9aFsnoedaf7KucHZwLD9NBXdgTMXuyd2+F8Z9Bz6EX0EvaPx7HvuZ+p3oor43ZN6ZF+YXne5H1J9c8Zwfnwm46qAt7orZezud6Db2B3kLvkn4uV+sv7nfKY7VnP/uli/IL50GZM15r1N6RxNrl7OBceJXqGaaeg8vnD9BH6BP0OeksWRfn5H6nPKa2Y+/0/kf4fYh6H1HmjNcaJU/UM3G5V3N2cC68T/1eEtecW/Rd0VfoG7QHfZ99V+t18Rzc7xZ51rNfuhRPcM3VeobXGkXcp/he5Vz4knR+qDGjfkA/oX3oV9Jr4F0xPve7ZbamJef5durneu1d/MZf/m1oH+UX1ev4fxn6PM/fO0vP7uHjN0eanA8=
   </data>
  </layer>
 </map>
